@@ -499,8 +499,8 @@ func _on_song_finished():
 	# Rallenta mentre è tutto buio
 	target_speed_multiplier = 0.5 
 
-func spawn_player_bullet(pos: Vector2):
-	player_bullets.append({ "pos": pos, "speed": 1200.0, "color": Color(0.2, 1.5, 3.0) })
+func spawn_player_bullet(pos: Vector2, color: Color = Color(0.2, 1.5, 3.0)):
+	player_bullets.append({ "pos": pos, "speed": 1200.0, "color": color })
 
 func spawn_explosion(pos: Vector2, color: Color, scale_mod: float, is_super: bool = false):
 	var ex = {
