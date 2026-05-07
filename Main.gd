@@ -40,22 +40,8 @@ var enemy_types = [
 	}
 ]
 
-# Playlist System (Procedurale e Infinito)
-var playlist = [
-	{
-		"file": "res://1.mp3",
-		"drop_time": 26.0,
-		"colors": [Color(0.005, 0.0, 0.015), Color(0.05, 0.01, 0.1), Color(0.0, 0.05, 0.15)] # Blu/Viola
-	},
-	{
-		"file": "res://2.mp3",
-		"drop_time": 30.0, # Approssimativo per la traccia 2
-		"colors": [Color(0.015, 0.0, 0.0), Color(0.1, 0.01, 0.0), Color(0.15, 0.05, 0.0)] # Rosso/Arancio (Inferno Cosmico)
-	}
-]
-var current_track_idx = 0
-var is_transitioning = false
-var transition_timer = 0.0
+# Audio
+var audio_manager: Node
 
 var current_c_bg = Color(0.005, 0.0, 0.015)
 var current_c_neb1 = Color(0.05, 0.01, 0.1)
@@ -83,15 +69,8 @@ var game_over_timer = 0.0
 
 @onready var player = preload("res://Player.tscn").instantiate()
 
-# Audio
-var audio_stream_player: AudioStreamPlayer
-var spectrum_instance: AudioEffectSpectrumAnalyzerInstance
 var world_env: WorldEnvironment
 var pp_rect: ColorRect
-
-var audio_bass = 0.0
-var audio_mid = 0.0
-var audio_high = 0.0
 
 var screen_size: Vector2
 
@@ -104,10 +83,10 @@ var layer_top = []
 func _ready():
 	screen_size = get_viewport_rect().size
 	
-	for i in range(8):
-		var p = AudioStreamPlayer.new()
-		add_child(p)
-		sfx_players.append(p)
+	audio_manager = load("res://AudioManager.gd").new()
+	add_child(audio_manager)
+	
+	audio_manager.load_and_play_track(0)
 	
 	# --- POST-PROCESSING: 100x GRAPHICS ---
 	var env = Environment.new()
@@ -436,17 +415,6 @@ func _ready():
 	add_child(player)
 	player.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 	
-	# Audio Setup Infinito
-	audio_stream_player = AudioStreamPlayer.new()
-	audio_stream_player.finished.connect(_on_song_finished)
-	add_child(audio_stream_player)
-	
-	# Spectrum Analyzer
-	var analyzer = AudioEffectSpectrumAnalyzer.new()
-	analyzer.buffer_length = 0.1
-	AudioServer.add_bus_effect(0, analyzer)
-	spectrum_instance = AudioServer.get_bus_effect_instance(0, AudioServer.get_bus_effect_count(0) - 1)
-	
 	main_camera = Camera2D.new()
 	main_camera.position = screen_size / 2.0 # Centro normale per il Title Screen
 	main_camera.zoom = Vector2(1.0, 1.0) 
@@ -454,7 +422,6 @@ func _ready():
 	
 	player.can_move = false
 	game_state = "TITLE"
-	# La musica partirà quando l'utente inserisce il nome!
 
 func _on_name_submitted(new_text: String):
 	player_name = new_text
@@ -473,31 +440,7 @@ func _on_name_submitted(new_text: String):
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 	main_camera.zoom = Vector2(4.0, 4.0)
 	
-	load_and_play_track(0)
-
-func load_and_play_track(idx: int):
-	var track = playlist[idx]
-	if ResourceLoader.exists(track.file):
-		var stream = load(track.file)
-		if stream is AudioStreamMP3:
-			stream.loop = false # NON loopare, passiamo alla prossima quando finisce!
-		audio_stream_player.stream = stream
-		audio_stream_player.play()
-	target_c_bg = track.colors[0]
-	target_c_neb1 = track.colors[1]
-	target_c_neb2 = track.colors[2]
-
-func _on_song_finished():
-	is_transitioning = true
-	transition_timer = 5.0 # 5 secondi di buio spaziale per prepararsi al drop successivo
-	
-	# Scurisci tutto a nero
-	target_c_bg = Color(0,0,0)
-	target_c_neb1 = Color(0,0,0)
-	target_c_neb2 = Color(0,0,0)
-	
-	# Rallenta mentre è tutto buio
-	target_speed_multiplier = 0.5 
+	audio_manager.load_and_play_track(0)
 
 func spawn_player_bullet(pos: Vector2, color: Color = Color(0.2, 1.5, 3.0)):
 	player_bullets.append({ "pos": pos, "speed": 1200.0, "color": color })
@@ -554,22 +497,12 @@ func _on_retry_pressed():
 func add_shake(amount: float):
 	shake_intensity = min(shake_intensity + amount, 80.0)
 
-func play_sfx(pitch: float, volume: float = 0.0):
-	for p in sfx_players:
-		if not p.playing and audio_stream_player.stream != null:
-			p.stream = audio_stream_player.stream # Usa la traccia in esecuzione come generatore
-			p.pitch_scale = pitch
-			p.volume_db = volume
-			p.play(randf_range(10.0, 20.0))
-			get_tree().create_timer(0.1).timeout.connect(p.stop)
-			break
-
 func trigger_hit_stop(duration: float):
 	hit_stop_timer = max(hit_stop_timer, duration)
 
 func spawn_railgun(pos: Vector2):
 	railguns.append({ "pos": pos, "life": 0.2 })
-	play_sfx(0.2, 5.0)
+	audio_manager.play_sfx(0.2, 5.0)
 	add_shake(15.0)
 
 func _spawn_enemy(type_idx: int, pos: Vector2, diff: float):
@@ -614,7 +547,7 @@ func _process(delta):
 		# Fotofinish effect: slow motion estremo, zoom e blur!
 		main_camera.zoom = main_camera.zoom.lerp(Vector2(2.5, 2.5), 0.8 * delta)
 		main_camera.position = main_camera.position.lerp(player.position, 1.5 * delta)
-		audio_stream_player.pitch_scale = lerp(audio_stream_player.pitch_scale, 0.01, 1.0 * delta)
+		audio_manager.audio_stream_player.pitch_scale = lerp(audio_manager.audio_stream_player.pitch_scale, 0.01, 1.0 * delta)
 		
 		if pp_rect and pp_rect.material:
 			var current_blur = pp_rect.material.get_shader_parameter("zoom_blur")
@@ -641,16 +574,16 @@ func _process(delta):
 			main_camera.zoom = Vector2(1.0, 1.0)
 			main_camera.position = screen_size / 2.0
 			
-	elif is_transitioning:
-		transition_timer -= delta
-		if transition_timer <= 0:
-			is_transitioning = false
-			current_track_idx = (current_track_idx + 1) % playlist.size()
-			load_and_play_track(current_track_idx)
+	elif audio_manager.is_transitioning:
+		audio_manager.transition_timer -= delta
+		if audio_manager.transition_timer <= 0:
+			audio_manager.is_transitioning = false
+			audio_manager.current_track_idx = (audio_manager.current_track_idx + 1) % audio_manager.playlist.size()
+			audio_manager.load_and_play_track(audio_manager.current_track_idx)
 	else:
 		var base_target_speed = 1.0
-		var pos = audio_stream_player.get_playback_position()
-		var drop = playlist[current_track_idx].drop_time
+		var pos = audio_manager.get_playback_position()
+		var drop = audio_manager.get_current_drop_time()
 		if pos >= drop:
 			base_target_speed = 4.0 # Velocità warp
 			
@@ -667,7 +600,7 @@ func _process(delta):
 	global_speed_multiplier = lerp(global_speed_multiplier, target_speed_multiplier, 1.5 * delta)
 	
 	# --- GAME LOOP (Nemici e Armi) ---
-	if not is_intro and not is_transitioning:
+	if not is_intro and not audio_manager.is_transitioning:
 		enemy_spawn_timer -= delta
 		if enemy_spawn_timer <= 0:
 			var diff = 1.0 + (distance / 5000.0) # Difficoltà crescente con la distanza
@@ -734,7 +667,7 @@ func _process(delta):
 				e.ai_timer -= delta
 				if e.ai_timer <= 0:
 					e.ai_state = "LEAVE"
-					play_sfx(0.5, 0.0)
+					audio_manager.play_sfx(0.5, 0.0)
 					for a in [-0.2, 0.0, 0.2]:
 						var dir = (player.position - e.pos).rotated(a).normalized()
 						enemy_bullets.append({ "pos": e.pos, "dir": dir, "speed": 400.0 })
@@ -783,7 +716,7 @@ func _process(delta):
 		elif b.pos.distance_to(player.position) < 45.0 and not b.has("grazed") and not player.is_invincible:
 			b["grazed"] = true
 			score_points += 50
-			play_sfx(3.0, -10.0)
+			audio_manager.play_sfx(3.0, -10.0)
 		elif b.pos.y > screen_size.y + 100 or b.pos.x < -100 or b.pos.x > screen_size.x + 100:
 			enemy_bullets.remove_at(i)
 			
@@ -804,22 +737,22 @@ func _process(delta):
 		p.pos.y += 80.0 * global_speed_multiplier * delta
 		if p.pos.distance_to(player.position) < 30.0:
 			if p.type == 0:
-				play_sfx(2.5, 5.0)
+				audio_manager.play_sfx(2.5, 5.0)
 				player_hp = min(player_hp + 40.0, 100.0)
 				hp_bar.value = player_hp
 				spawn_explosion(player.position, Color(0.2, 3.0, 0.5), 0.5) # Verde curativo
 			elif p.type == 1:
-				play_sfx(3.5, 5.0)
+				audio_manager.play_sfx(3.5, 5.0)
 				player.fire_buff_timer = 10.0
 				player.weapon_type = 1
 				spawn_explosion(player.position, Color(3.0, 0.5, 3.0), 0.5) # Viola armi
 			elif p.type == 2:
-				play_sfx(2.0, 5.0)
+				audio_manager.play_sfx(2.0, 5.0)
 				player.fire_buff_timer = 15.0
 				player.drone_active = true
 				spawn_explosion(player.position, Color(0.5, 3.0, 3.0), 0.5) # Azzurro drones
 			elif p.type == 3:
-				play_sfx(0.1, 10.0)
+				audio_manager.play_sfx(0.1, 10.0)
 				spawn_explosion(player.position, Color(0.0, 0.0, 0.0), 2.0)
 				add_shake(40.0)
 				black_holes.append({ "pos": p.pos, "life": 6.0 })
@@ -842,7 +775,7 @@ func _process(delta):
 					e.hit_flash = 0.1
 					if e.hp <= 0:
 						trigger_hit_stop(0.05)
-						play_sfx(1.5, -5.0)
+						audio_manager.play_sfx(1.5, -5.0)
 						spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 1.0)
 						if randf() > 0.8: powerups.append({ "pos": e.pos, "type": randi() % 4 })
 						enemies.remove_at(j)
@@ -881,27 +814,15 @@ func _process(delta):
 	current_c_neb2 = current_c_neb2.lerp(target_c_neb2, 0.8 * delta)
 	
 	# --- AUDIO REACTIVE ---
-	if spectrum_instance:
-		var b = spectrum_instance.get_magnitude_for_frequency_range(20.0, 150.0).length()
-		var m = spectrum_instance.get_magnitude_for_frequency_range(200.0, 2000.0).length()
-		
-		# Strobe molto reattivo per la cassa
-		if b > audio_bass:
-			audio_bass = lerp(audio_bass, b, 40.0 * delta) # Attack esplosivo
-		else:
-			audio_bass = lerp(audio_bass, b, 8.0 * delta) # Decay elegante
-			
-		audio_mid = lerp(audio_mid, m, 15.0 * delta)
-		
-		# Ripristina glow fisso a 1.8 per non impattare su tutto
-		if world_env and world_env.environment:
-			world_env.environment.glow_intensity = 1.8
+	# Ripristina glow fisso a 1.8 per non impattare su tutto
+	if world_env and world_env.environment:
+		world_env.environment.glow_intensity = 1.8
 	
 	# Aggiorna variabili nello Shader della nebulosa
 	nebula_time += delta * global_speed_multiplier
 	if nebula_bg and nebula_bg.material:
 		nebula_bg.material.set_shader_parameter("scroll_time", nebula_time)
-		nebula_bg.material.set_shader_parameter("audio_bass", audio_bass)
+		nebula_bg.material.set_shader_parameter("audio_bass", audio_manager.audio_low)
 		nebula_bg.material.set_shader_parameter("c_bg", Vector3(current_c_bg.r, current_c_bg.g, current_c_bg.b))
 		nebula_bg.material.set_shader_parameter("c_neb1", Vector3(current_c_neb1.r, current_c_neb1.g, current_c_neb1.b))
 		nebula_bg.material.set_shader_parameter("c_neb2", Vector3(current_c_neb2.r, current_c_neb2.g, current_c_neb2.b))
@@ -960,7 +881,7 @@ func _draw():
 				
 	# 2. DRAW LAYER MID
 	for e in layer_mid:
-		draw_rect(Rect2(e.pos, Vector2(1, 1)), Color(1.5 + audio_mid*3.0, 1.5 + audio_mid*3.0, 1.5 + audio_mid*3.0, e.brightness)) # HDR Glow
+		draw_rect(Rect2(e.pos, Vector2(1, 1)), Color(1.5 + audio_manager.audio_mid*3.0, 1.5 + audio_manager.audio_mid*3.0, 1.5 + audio_manager.audio_mid*3.0, e.brightness)) # HDR Glow
 		
 	# 3. DRAW LAYER NEAR
 	for e in layer_near:
@@ -969,7 +890,7 @@ func _draw():
 		elif e.type == "constellation":
 			draw_set_transform(e.pos, 0.0, Vector2.ONE)
 			for s in range(e.stars.size() - 1):
-				draw_line(e.stars[s], e.stars[s+1], Color(1.2 + audio_mid*2.0, 1.2 + audio_mid*2.0, 1.2 + audio_mid*2.0, e.brightness * 0.08), 1.0) # Molto trasparenti
+				draw_line(e.stars[s], e.stars[s+1], Color(1.2 + audio_manager.audio_mid*2.0, 1.2 + audio_manager.audio_mid*2.0, 1.2 + audio_manager.audio_mid*2.0, e.brightness * 0.08), 1.0) # Molto trasparenti
 			for s in e.stars:
 				draw_rect(Rect2(s, Vector2(1, 1)), Color(1.8, 1.8, 1.8, e.brightness * 0.2)) # Piccole e deboli
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
