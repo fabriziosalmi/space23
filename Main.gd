@@ -58,13 +58,7 @@ var game_state = "TITLE" # "TITLE", "INTRO", "PLAYING"
 var player_name = "PLAYER 1"
 var player_hp = 100.0
 
-var ui_layer: CanvasLayer
-var title_label: Label
-var name_input: LineEdit
-var hp_bar: ProgressBar
-var hud_score: Label
-var game_over_container: VBoxContainer
-var final_score_label: Label
+var ui_manager
 var game_over_timer = 0.0
 
 @onready var player = preload("res://Player.tscn").instantiate()
@@ -99,6 +93,12 @@ func _ready():
 	world_env = WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
+	
+	ui_manager = load("res://UIManager.gd").new()
+	add_child(ui_manager)
+	ui_manager.start_pressed.connect(_on_start_pressed)
+	ui_manager.name_submitted.connect(_on_name_submitted)
+	ui_manager.retry_pressed.connect(_on_retry_pressed)
 	
 	var canvas_layer = CanvasLayer.new()
 	canvas_layer.layer = 100 # Sopra tutto
@@ -189,135 +189,6 @@ func _ready():
 	canvas_layer.add_child(pp_rect)
 	add_child(canvas_layer)
 	
-	# --- LAYER 0: NEBULA SHADER (Colored Universe Background) ---
-	nebula_bg = ColorRect.new()
-	nebula_bg.size = screen_size + Vector2(400, 400) # Overscan per evitare bordi neri
-	nebula_bg.position = Vector2(-200, -200)
-	var mat = ShaderMaterial.new()
-	var shader = Shader.new()
-	shader.code = """
-    shader_type canvas_item;
-    uniform float scroll_time = 0.0;
-    uniform float audio_bass = 0.0;
-    
-    uniform vec3 c_bg = vec3(0.005, 0.0, 0.015);
-    uniform vec3 c_neb1 = vec3(0.05, 0.01, 0.1);
-    uniform vec3 c_neb2 = vec3(0.0, 0.05, 0.15);
-    
-    // Noise algorithm
-    float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
-    }
-    float noise(vec2 x) {
-        vec2 i = floor(x);
-        vec2 f = fract(x);
-        float a = hash(i);
-        float b = hash(i + vec2(1.0, 0.0));
-        float c = hash(i + vec2(0.0, 1.0));
-        float d = hash(i + vec2(1.0, 1.0));
-        vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-    }
-    float fbm(vec2 x) {
-        float v = 0.0;
-        float a = 0.5;
-        vec2 shift = vec2(100.0);
-        mat2 rot = mat2(vec2(cos(0.5), sin(0.5)), vec2(-sin(0.5), cos(0.50)));
-        for (int i = 0; i < 5; ++i) {
-            v += a * noise(x);
-            x = rot * x * 2.0 + shift;
-            a *= 0.5;
-        }
-        return v;
-    }
-    
-    void fragment() {
-        vec2 uv = UV;
-        // Scroll animato custom
-        vec2 scroll_uv = uv + vec2(0.0, -scroll_time * 0.015);
-        
-        float n1 = fbm(scroll_uv * 3.0);
-        float n2 = fbm(scroll_uv * 2.0 + vec2(5.2, 1.3));
-        
-        vec3 final_color = mix(c_bg, c_neb1, smoothstep(0.3, 0.8, n1));
-        final_color = mix(final_color, c_neb2, smoothstep(0.4, 0.9, n2));
-        
-        // Effetto Strobo Elegante: illumina solo le nubi di sfondo a tempo di cassa
-        float strobe = audio_bass * 8.0; 
-        final_color += final_color * strobe;
-        
-        COLOR = vec4(final_color, 1.0);
-    }
-    """
-	mat.shader = shader
-	nebula_bg.material = mat
-	# Fondamentale: mettiamo la nebulosa sul piano Z più profondo per non coprire _draw
-	nebula_bg.z_index = -100
-	add_child(nebula_bg)
-	
-	# Setup UI e HUD in un CanvasLayer separato (Sotto il PP per avere l'effetto CRT!)
-	ui_layer = CanvasLayer.new()
-	ui_layer.layer = 99 
-	
-	hud_score = Label.new()
-	hud_score.position = Vector2(20, 20)
-	hud_score.text = "Score: 0"
-	hud_score.add_theme_font_size_override("font_size", 24)
-	ui_layer.add_child(hud_score)
-	
-	hp_bar = ProgressBar.new()
-	hp_bar.position = Vector2(20, 60)
-	hp_bar.size = Vector2(200, 20)
-	hp_bar.max_value = 100
-	hp_bar.value = 100
-	ui_layer.add_child(hp_bar)
-	
-	title_label = Label.new()
-	title_label.text = "SPACE23\nINSERT COIN"
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.add_theme_font_size_override("font_size", 32)
-	title_label.position = Vector2(screen_size.x / 2.0 - 150, screen_size.y / 2.0 - 60)
-	ui_layer.add_child(title_label)
-	
-	name_input = LineEdit.new()
-	name_input.position = Vector2(screen_size.x / 2.0 - 100, screen_size.y / 2.0 + 30)
-	name_input.size = Vector2(200, 40)
-	name_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_input.text_submitted.connect(_on_name_submitted)
-	ui_layer.add_child(name_input)
-	
-	hud_score.hide()
-	hp_bar.hide()
-	
-	# Game Over UI
-	game_over_container = VBoxContainer.new()
-	game_over_container.alignment = BoxContainer.ALIGNMENT_CENTER
-	game_over_container.size = Vector2(400, 200)
-	game_over_container.position = Vector2(screen_size.x / 2.0 - 200, screen_size.y / 2.0 - 100)
-	game_over_container.hide()
-	
-	var go_label = Label.new()
-	go_label.text = "G A M E   O V E R"
-	go_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	go_label.add_theme_font_size_override("font_size", 48)
-	go_label.add_theme_color_override("font_color", Color(1, 0.2, 0.2))
-	game_over_container.add_child(go_label)
-	
-	final_score_label = Label.new()
-	final_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	final_score_label.add_theme_font_size_override("font_size", 24)
-	game_over_container.add_child(final_score_label)
-	
-	var retry_button = Button.new()
-	retry_button.text = "R E T R Y"
-	retry_button.add_theme_font_size_override("font_size", 32)
-	retry_button.pressed.connect(_on_retry_pressed)
-	game_over_container.add_child(retry_button)
-	
-	ui_layer.add_child(game_over_container)
-	add_child(ui_layer)
-	name_input.grab_focus()
-	
 	add_child(player)
 	player.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 	
@@ -329,15 +200,7 @@ func _ready():
 	player.can_move = false
 	game_state = "TITLE"
 
-func _on_name_submitted(new_text: String):
-	player_name = new_text
-	if player_name == "": player_name = "PLAYER 1"
-	
-	title_label.queue_free()
-	name_input.queue_free()
-	hud_score.show()
-	hp_bar.show()
-	
+func _on_start_pressed():
 	game_state = "INTRO"
 	is_intro = true
 	is_playing = true
@@ -345,6 +208,9 @@ func _on_name_submitted(new_text: String):
 	# Prepara la camera per il Super Zoom
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 	main_camera.zoom = Vector2(4.0, 4.0)
+
+func _on_name_submitted(new_text: String):
+	player_name = new_text
 
 func spawn_player_bullet(pos: Vector2, color: Color = Color(0.2, 1.5, 3.0)):
 	player_bullets.append({ "pos": pos, "speed": 1200.0, "color": color })
@@ -388,7 +254,6 @@ func trigger_game_over():
 	game_state = "GAMEOVER"
 	game_over_timer = 0.0
 	player_hp = 0
-	hp_bar.value = 0
 	player.can_move = false
 	player.visible = false
 	add_shake(60.0)
@@ -462,9 +327,8 @@ func _process(delta):
 			if current_gray == null: current_gray = 0.0
 			pp_rect.material.set_shader_parameter("grayscale", lerp(current_gray, 1.0, 1.5 * delta))
 			
-		if game_over_timer > 3.0 and not game_over_container.visible:
-			final_score_label.text = player_name + " - SCORE: " + str(int(distance) + score_points)
-			game_over_container.show()
+		if game_over_timer > 3.0 and not ui_manager.game_over_container.visible:
+			ui_manager.show_game_over(int(distance) + score_points)
 		
 	if is_intro:
 		intro_timer -= delta
@@ -611,7 +475,6 @@ func _process(delta):
 			trigger_hit_stop(0.05)
 			enemies.remove_at(i)
 			player_hp -= 30.0
-			hp_bar.value = player_hp
 			if player_hp <= 0 and game_state != "GAMEOVER":
 				trigger_game_over()
 		elif e.pos.y > screen_size.y + 100:
@@ -626,7 +489,6 @@ func _process(delta):
 			trigger_hit_stop(0.02)
 			enemy_bullets.remove_at(i)
 			player_hp -= 15.0
-			hp_bar.value = player_hp
 			if player_hp <= 0 and game_state != "GAMEOVER":
 				trigger_game_over()
 		elif b.pos.distance_to(player.position) < 45.0 and not b.has("grazed") and not player.is_invincible:
@@ -655,7 +517,6 @@ func _process(delta):
 			if p.type == 0:
 				audio_manager.play_sfx(2.5, 5.0)
 				player_hp = min(player_hp + 40.0, 100.0)
-				hp_bar.value = player_hp
 				spawn_explosion(player.position, Color(0.2, 3.0, 0.5), 0.5) # Verde curativo
 			elif p.type == 1:
 				audio_manager.play_sfx(3.5, 5.0)
@@ -738,7 +599,7 @@ func _process(delta):
 	bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid)
 	
 	distance += scroll_speed * global_speed_multiplier * delta
-	hud_score.text = player_name + " - Score: " + str(int(distance) + score_points)
+	ui_manager.update_hud(player_hp, int(distance) + score_points)
 	
 	queue_redraw()
 
