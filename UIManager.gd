@@ -48,7 +48,7 @@ func _ready():
 	
 	title_label = Label.new()
 	
-	var game_version = "v1.0"
+	var game_version = "v0.1.0"
 	var vfile = FileAccess.open("res://version.txt", FileAccess.READ)
 	if vfile:
 		game_version = vfile.get_as_text().strip_edges()
@@ -192,6 +192,13 @@ func show_game_over(final_score: int):
 	name_input.text = ""
 	name_input.grab_focus()
 	retry_button.hide()
+
+func hide_game_over():
+	game_over_container.hide()
+	hud_score.show()
+	hp_bar.show()
+	flow_label.show()
+	bomb_label.show()
 
 func update_hud(hp: float, score: int, flow: float = 0.0, bombs: int = 0):
 	hp_bar.value = hp

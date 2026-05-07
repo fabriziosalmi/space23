@@ -295,7 +295,47 @@ func trigger_game_over():
 	target_speed_multiplier = 0.0 # Tempo fermo completamente
 
 func _on_retry_pressed():
-	get_tree().reload_current_scene()
+	# Instant Restart (QoL SOTA)
+	add_shake(150.0)
+	trigger_hit_stop(0.5)
+	
+	player_hp = 100.0
+	player_bombs = 3
+	score_points = 0
+	flow_state = 0.0
+	distance = 0.0
+	wave_timer = 3.0
+	wave_index = 0
+	
+	player.position = Vector2(screen_size.x / 2.0, screen_size.y - 100)
+	player.velocity = Vector2.ZERO
+	player.is_invincible = true
+	player.dash_timer = 0.0
+	player.dash_cooldown = 0.0
+	player.visible = true
+	player.can_move = true
+	
+	enemies.clear()
+	player_bullets.clear()
+	active_enemy_bullets.clear()
+	pool_enemy_bullets.clear()
+	for i in range(2500):
+		pool_enemy_bullets.append({ "pos": Vector2.ZERO, "dir": Vector2.ZERO, "speed": 0.0, "homing": false, "grazed": false })	
+	powerups.clear()
+	railguns.clear()
+	black_holes.clear()
+	explosions.clear()
+	
+	game_state = "PLAYING"
+	game_over_timer = 0.0
+	is_intro = false
+	remove_meta("has_boss_spawned")
+	
+	audio_manager.load_and_play_track(0)
+	
+	if is_instance_valid(ui_manager):
+		ui_manager.hide_game_over()
+		ui_manager.update_boss_hp(0, 100)
 
 func add_shake(amount: float):
 	shake_intensity = min(shake_intensity + amount, 80.0)
@@ -383,6 +423,11 @@ func _process(delta):
 		return
 		
 	if not is_playing:
+		return
+		
+	if Input.is_action_just_pressed("ui_accept") and game_state == "GAMEOVER" and game_over_timer > 0.5:
+		# Se si preme invio durante il game over per saltare (o R)
+		_on_retry_pressed()
 		return
 		
 	if game_state == "GAMEOVER":

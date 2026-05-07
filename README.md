@@ -1,5 +1,7 @@
 # SPACE23
 
+![SPACE23 Screenshot](screenshot.png)
+
 **SPACE23** is an ultra-high fidelity, procedural space shooter built in **Godot 4**.
 Developed with a strict "draconian" approach: zero bloat, pure math-driven aesthetics, and performance-first logic.
 
