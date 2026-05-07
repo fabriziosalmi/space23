@@ -20,11 +20,12 @@ var retry_button: Button
 var highscores = []
 const SAVE_PATH = "user://space23_highscores.json"
 var current_final_score = 0
+var start_button: Button
+var boss_hp_bar: ProgressBar
 var arcade_font
 
 func _ready():
 	arcade_font = preload("res://PressStart2P.ttf")
-	
 	layer = 101
 	var screen_size = get_viewport().get_visible_rect().size
 	
@@ -46,18 +47,24 @@ func _ready():
 	add_child(hp_bar)
 	
 	title_label = Label.new()
-	title_label.text = "S P A C E 2 3\n\nPRESS ENTER TO START"
+	
+	var game_version = "v1.0"
+	var vfile = FileAccess.open("res://version.txt", FileAccess.READ)
+	if vfile:
+		game_version = vfile.get_as_text().strip_edges()
+		
+	title_label.text = "S P A C E 2 3\n\nPRESS ENTER TO START\n\n" + game_version
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.add_theme_font_override("font", arcade_font)
-	title_label.add_theme_font_size_override("font_size", 32)
+	title_label.add_theme_font_size_override("font_size", 52)
 	title_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.6))
 	title_label.add_theme_color_override("font_outline_color", Color(0.2, 0.0, 0.4))
-	title_label.add_theme_constant_override("outline_size", 12)
-	title_label.add_theme_constant_override("shadow_offset_x", 4)
-	title_label.add_theme_constant_override("shadow_offset_y", 4)
+	title_label.add_theme_constant_override("outline_size", 16)
+	title_label.add_theme_constant_override("shadow_offset_x", 8)
+	title_label.add_theme_constant_override("shadow_offset_y", 8)
 	title_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0))
-	title_label.position = Vector2(screen_size.x / 2.0 - 300, screen_size.y / 2.0 - 150)
-	title_label.size = Vector2(600, 200)
+	title_label.position = Vector2(screen_size.x / 2.0 - 500, screen_size.y / 2.0 - 200)
+	title_label.size = Vector2(1000, 400)
 	add_child(title_label)
 	
 	leaderboard_label = Label.new()

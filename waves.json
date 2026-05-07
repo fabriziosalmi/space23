@@ -5,6 +5,11 @@
     "delay": 3.0
   },
   {
+    "type": "invaders",
+    "count": 6,
+    "delay": 5.0
+  },
+  {
     "type": "horizontal",
     "count": 4,
     "delay": 4.0

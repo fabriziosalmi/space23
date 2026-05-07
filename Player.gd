@@ -1,8 +1,8 @@
 extends Node2D
 
 var max_speed = 700.0
-var acceleration = 3000.0
-var friction = 2000.0
+var acceleration = 7000.0 # Input buffer SOTA, estrema reattività
+var friction = 5000.0
 var velocity = Vector2.ZERO
 var screen_size: Vector2
 
@@ -215,6 +215,11 @@ func _process(delta):
 				shoot_timer = 0.5 # Railgun rate
 				if get_parent().has_method("spawn_railgun"):
 					get_parent().spawn_railgun(position + Vector2(0, -30))
+			elif weapon_type == 2:
+				shoot_timer = 0.15 # Mirror Laser
+				if get_parent().has_method("spawn_player_bullet"):
+					get_parent().spawn_player_bullet(position + Vector2(0, -20), Vector2(-0.8, -1).normalized(), Color(0.2, 3.0, 1.5), 3)
+					get_parent().spawn_player_bullet(position + Vector2(0, -20), Vector2(0.8, -1).normalized(), Color(0.2, 3.0, 1.5), 3)
 			elif fire_buff_timer > 0.0:
 				shoot_timer = 0.08 # Più veloce e 4 cannoni!
 				if get_parent().has_method("spawn_player_bullet"):

@@ -45,6 +45,16 @@ var enemy_types = [
 		"hp": 30, "speed": [30.0, 50.0], "color": Color(0.9, 0.2, 0.9),
 		"pts": PackedVector2Array([Vector2(0, 30), Vector2(-30, 0), Vector2(0, -30), Vector2(30, 0)]),
 		"ai": 3, "shoot": [0.05, 0.05]
+	},
+	{ # 4: SPACE INVADER
+		"hp": 8, "speed": [120.0, 180.0], "color": Color(0.1, 1.0, 0.5),
+		"pts": PackedVector2Array([Vector2(-15, -10), Vector2(15, -10), Vector2(15, 10), Vector2(-15, 10)]),
+		"ai": 4, "shoot": [1.5, 2.5]
+	},
+	{ # 5: MOTHER SHIP BOSS
+		"hp": 250, "speed": [20.0, 30.0], "color": Color(2.0, 0.2, 0.2),
+		"pts": PackedVector2Array([Vector2(0, 80), Vector2(-150, -40), Vector2(-80, -80), Vector2(80, -80), Vector2(150, -40)]),
+		"ai": 5, "shoot": [0.05, 0.05]
 	}
 ]
 
@@ -89,8 +99,6 @@ func _ready():
 	bg_renderer = load("res://BackgroundRenderer.gd").new()
 	add_child(bg_renderer)
 	
-	audio_manager.load_and_play_track(0)
-	
 	# --- POST-PROCESSING: 100x GRAPHICS ---
 	var env = Environment.new()
 	env.background_mode = Environment.BG_CANVAS
@@ -112,6 +120,11 @@ func _ready():
 	
 	var canvas_layer = CanvasLayer.new()
 	canvas_layer.layer = 100 # Sopra tutto
+	
+	var bbc = BackBufferCopy.new()
+	bbc.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT
+	canvas_layer.add_child(bbc)
+	
 	pp_rect = ColorRect.new()
 	pp_rect.size = screen_size
 	pp_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -224,6 +237,7 @@ func _on_start_pressed():
 	game_state = "INTRO"
 	is_intro = true
 	is_playing = true
+	audio_manager.load_and_play_track(0)
 	
 	# Prepara la camera per il Super Zoom
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
@@ -232,8 +246,8 @@ func _on_start_pressed():
 func _on_name_submitted(new_text: String):
 	player_name = new_text
 
-func spawn_player_bullet(pos: Vector2, color: Color = Color(0.2, 1.5, 3.0)):
-	player_bullets.append({ "pos": pos, "speed": 1200.0, "color": color })
+func spawn_player_bullet(pos: Vector2, dir: Vector2 = Vector2.UP, color: Color = Color(0.2, 1.5, 3.0), bounces: int = 0):
+	player_bullets.append({ "pos": pos, "dir": dir, "speed": 1200.0, "color": color, "bounces": bounces })
 
 func spawn_explosion(pos: Vector2, color: Color, scale_mod: float, is_super: bool = false):
 	var ex = {
@@ -346,7 +360,8 @@ func _spawn_enemy(type_idx: int, pos: Vector2, diff: float):
 		"shoot_timer": randf_range(e_type.shoot[0], e_type.shoot[1]),
 		"color": e_type.color,
 		"pts": e_type.pts,
-		"hit_flash": 0.0
+		"hit_flash": 0.0,
+		"invader_dir": 1.0 if randf() > 0.5 else -1.0
 	})
 
 func _process(delta):
@@ -435,8 +450,13 @@ func _process(delta):
 		if Input.is_key_pressed(KEY_X) and player_bombs > 0:
 			trigger_smart_bomb()
 			
-		# Flow state increment
-		flow_state = min(flow_state + delta * 0.02, 1.0)
+		# DMC Style Risk/Reward: Gioca aggressivo (nella parte alta dello schermo)
+		var player_y_ratio = player.position.y / screen_size.y
+		if player_y_ratio < 0.5:
+			flow_state = min(flow_state + delta * 0.08, 1.0)
+			score_points += int(15 * delta * (1.0 - player_y_ratio))
+		else:
+			flow_state = max(flow_state - delta * 0.05, 0.0)
 			
 		# --- PARALLASSE CAMERA BASATA SUL PLAYER ---
 		# La telecamera si sposta leggermente seguendo la nave sull'asse X
@@ -446,6 +466,15 @@ func _process(delta):
 	global_speed_multiplier = lerp(global_speed_multiplier, target_speed_multiplier, 1.5 * delta)
 	
 	if not is_intro and not audio_manager.is_transitioning:
+		if audio_manager.audio_stream_player.stream:
+			var track_len = audio_manager.audio_stream_player.stream.get_length()
+			var pos = audio_manager.get_playback_position()
+			if pos > track_len - 30.0 and not get_meta("has_boss_spawned", false):
+				set_meta("has_boss_spawned", true)
+				_spawn_enemy(5, Vector2(screen_size.x / 2.0, -200), 1.0 + (distance / 4000.0))
+				audio_manager.play_sfx(0.5, 10.0) # Evil boss sound
+				add_shake(50.0)
+				
 		wave_timer -= delta
 		if wave_timer <= 0:
 			var diff = 1.0 + (distance / 4000.0) # Difficoltà crescente
@@ -477,13 +506,30 @@ func _process(delta):
 				elif type == "spinner":
 					var cx = screen_size.x / 2.0
 					_spawn_enemy(3, Vector2(cx, -100), diff)
+				elif type == "invaders":
+					var start_x = (screen_size.x / 2.0) - ((count/2) * 80)
+					for w in range(count):
+						_spawn_enemy(4, Vector2(start_x + w * 80, -100 - (w%2)*40), diff)
 					
 				wave_index += 1
 			
 	for i in range(player_bullets.size() - 1, -1, -1):
 		var b = player_bullets[i]
-		b.pos.y -= b.speed * delta
-		if b.pos.y < -50:
+		
+		# Gravità dinamica per i proiettili del giocatore
+		for bh in black_holes:
+			var d = b.pos.distance_to(bh.pos)
+			if d < 250.0:
+				var pull = (bh.pos - b.pos).normalized() * (1.0 - d/250.0) * 1200.0 * delta
+				b.dir = (b.dir * b.speed + pull).normalized()
+				
+		b.pos += b.dir * b.speed * delta
+		if b.bounces > 0:
+			if b.pos.x < 0 or b.pos.x > screen_size.x:
+				b.dir.x *= -1.0
+				b.bounces -= 1
+				b.pos.x = clamp(b.pos.x, 0, screen_size.x)
+		if b.pos.y < -50 or b.pos.y > screen_size.y + 50 or b.pos.x < -50 or b.pos.x > screen_size.x + 50:
 			player_bullets.remove_at(i)
 			continue
 		var hit = false
@@ -495,7 +541,17 @@ func _process(delta):
 				e.hit_flash = 0.1 # Feedback visivo
 				spawn_explosion(b.pos, Color(0.5, 1.0, 2.0), 0.3)
 				if e.hp <= 0:
-					spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 1.0)
+					if e.ai_type == 5:
+						if is_instance_valid(ui_manager):
+							ui_manager.update_boss_hp(0, 100)
+						score_points += 5000
+						spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 3.0, true)
+						audio_manager.play_sfx(0.2, 10.0)
+						add_shake(100.0)
+						trigger_hit_stop(2.0)
+					else:
+						spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 1.0)
+						
 					flow_state = min(flow_state + 0.05, 1.0)
 					if randf() > 0.8: # 20% drop powerup
 						powerups.append({ "pos": e.pos, "type": randi() % 4 })
@@ -567,7 +623,45 @@ func _process(delta):
 					spawn_enemy_bullet(e.pos, dir4, 150.0, false)
 			if e.pos.y > screen_size.y + 100: e.hp = 0
 			
-		if e.pos.distance_to(player.position) < 40.0 and not player.is_invincible:
+		elif e.ai_type == 4: # Space Invaders
+			e.pos.x += e.speed * e.invader_dir * global_speed_multiplier * delta
+			if e.pos.x < 100 or e.pos.x > screen_size.x - 100:
+				e.invader_dir *= -1.0
+				e.pos.y += 60.0
+				e.pos.x += e.speed * e.invader_dir * global_speed_multiplier * delta
+			
+			if e.shoot_timer <= 0:
+				e.shoot_timer = randf_range(1.5, 2.5)
+				spawn_enemy_bullet(e.pos, Vector2.DOWN, 250.0, false)
+			if e.pos.y > screen_size.y + 100: e.hp = 0
+			
+		elif e.ai_type == 5: # Mother Ship Boss
+			if e.ai_state == "ENTER":
+				e.pos.y += e.speed * global_speed_multiplier * delta
+				if e.pos.y > 150:
+					e.ai_state = "ATTACK"
+			elif e.ai_state == "ATTACK":
+				e.pos.x += sin(e.ai_timer * 1.5) * 80.0 * delta
+				e.shoot_timer -= delta
+				# Telegrafo visivo prima di sparare (DMC Style)
+				if e.shoot_timer < 0.3 and e.shoot_timer > 0.2:
+					e.hit_flash = 1.0 # Flash bianco accecante (Telegraph)
+					
+				if e.shoot_timer <= 0:
+					e.shoot_timer = 2.0 # Attacca ogni 2 secondi
+					audio_manager.play_sfx(0.8, 2.0) # Suono di ricarica
+					var a = e.ai_timer * 3.0
+					for j in range(16): # Anello massiccio di proiettili SOTA
+						var dir = Vector2(cos(a + j*PI/8), sin(a + j*PI/8))
+						spawn_enemy_bullet(e.pos + Vector2(0, 40), dir, 200.0, false)
+					if randf() > 0.5:
+						var dir_player = (player.position - e.pos).normalized()
+						spawn_enemy_bullet(e.pos, dir_player, 400.0, true)
+						
+			if is_instance_valid(ui_manager):
+				ui_manager.update_boss_hp(e.hp, e.max_hp)
+				
+		if e.pos.distance_to(player.position) < 15.0 and not player.is_invincible:
 			spawn_explosion(player.position, Color(3.0, 0.5, 0.5), 0.8)
 			add_shake(25.0)
 			trigger_hit_stop(0.05)
@@ -581,6 +675,14 @@ func _process(delta):
 			
 	for i in range(active_enemy_bullets.size() - 1, -1, -1):
 		var b = active_enemy_bullets[i]
+		
+		# Gravità dinamica per i proiettili nemici
+		for bh in black_holes:
+			var d = b.pos.distance_to(bh.pos)
+			if d < 250.0:
+				var pull = (bh.pos - b.pos).normalized() * (1.0 - d/250.0) * 800.0 * delta
+				b.dir = (b.dir * b.speed + pull).normalized()
+				
 		if b.has("homing") and b.homing and is_instance_valid(player):
 			var desired_dir = (player.position - b.pos).normalized()
 			b.dir = b.dir.lerp(desired_dir, 1.2 * delta).normalized()
@@ -589,7 +691,7 @@ func _process(delta):
 		
 		# Bullet Grazing!
 		var dist_to_player = b.pos.distance_to(player.position)
-		if dist_to_player < 15.0 and not player.is_invincible:
+		if dist_to_player < 5.0 and not player.is_invincible:
 			spawn_explosion(player.position, Color(3.0, 0.2, 0.2), 0.5)
 			add_shake(10.0)
 			trigger_hit_stop(0.02)
@@ -598,7 +700,7 @@ func _process(delta):
 			flow_state = 0.0
 			if player_hp <= 0 and game_state != "GAMEOVER":
 				trigger_game_over()
-		elif dist_to_player < 45.0 and not b.has("grazed") and not player.is_invincible:
+		elif dist_to_player < 35.0 and not b.has("grazed") and not player.is_invincible:
 			b["grazed"] = true
 			score_points += 50
 			flow_state = min(flow_state + 0.1, 1.0)
@@ -765,11 +867,13 @@ func _draw():
 		draw_arc(bh.pos, 35.0 + cos(time * 15.0)*10.0, 0, PI*2, 32, Color(4.0, 1.0, 1.0, alpha*0.5), 1.0, true)
 		
 	for b in active_enemy_bullets:
-		var col = Color(2.5, 0.8, 0.2)
+		var col = Color(3.0, 0.2, 1.5) # Neon Pink High Contrast
+		var core = Color(4.0, 1.0, 3.0)
 		if b.has("homing") and b.homing:
-			col = Color(1.0, 0.2, 1.0) # Homing missiles in pink!
+			col = Color(3.0, 1.0, 0.1) # Neon Orange/Yellow
+			core = Color(4.0, 3.0, 1.0)
 		draw_circle(b.pos, 5.0, col)
-		draw_circle(b.pos, 2.0, Color(4.0, 2.0, 1.0))
+		draw_circle(b.pos, 2.0, core)
 		
 	for ex in explosions:
 		var alpha = ex.life / ex.max_life
