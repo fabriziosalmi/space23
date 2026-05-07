@@ -64,6 +64,7 @@ var game_state = "TITLE" # "TITLE", "INTRO", "PLAYING"
 var player_name = "PLAYER 1"
 var player_hp = 100.0
 var flow_state = 0.0
+var player_bombs = 3
 
 var ui_manager
 var game_over_timer = 0.0
@@ -283,6 +284,29 @@ func spawn_railgun(pos: Vector2):
 	audio_manager.play_sfx(0.2, 5.0)
 	add_shake(15.0)
 
+func trigger_smart_bomb():
+	player_bombs -= 1
+	audio_manager.play_sfx(0.2, 5.0)
+	add_shake(80.0)
+	
+	# Crea una super esplosione bianca
+	spawn_explosion(player.position, Color(10.0, 10.0, 10.0), 3.0, true)
+	
+	# Distruggi tutti i proiettili nemici
+	for b in enemy_bullets:
+		spawn_explosion(b.pos, Color(1.0, 0.5, 0.5), 0.2)
+	enemy_bullets.clear()
+	
+	# Danneggia o distruggi nemici
+	for i in range(enemies.size() - 1, -1, -1):
+		var e = enemies[i]
+		e.hp -= 50
+		e.hit_flash = 1.0
+		if e.hp <= 0:
+			spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 1.0)
+			score_points += 100
+			enemies.remove_at(i)
+
 func _spawn_enemy(type_idx: int, pos: Vector2, diff: float):
 	var e_type = enemy_types[type_idx]
 	enemies.append({
@@ -380,6 +404,9 @@ func _process(delta):
 		var speed_ratio = clamp(player.velocity.length() / player.max_speed, 0.05, 1.0)
 		if player.is_dashing: speed_ratio = 1.0 # Dash forza il tempo reale
 		target_speed_multiplier = base_target_speed * speed_ratio * (1.0 + flow_state * 0.8)
+			
+		if Input.is_key_pressed(KEY_X) and player_bombs > 0:
+			trigger_smart_bomb()
 			
 		# Flow state increment
 		flow_state = min(flow_state + delta * 0.02, 1.0)
@@ -536,7 +563,10 @@ func _process(delta):
 			b.dir = b.dir.lerp(desired_dir, 1.2 * delta).normalized()
 			
 		b.pos += b.dir * b.speed * delta * global_speed_multiplier
-		if b.pos.distance_to(player.position) < 15.0 and not player.is_invincible:
+		
+		# Bullet Grazing!
+		var dist_to_player = b.pos.distance_to(player.position)
+		if dist_to_player < 15.0 and not player.is_invincible:
 			spawn_explosion(player.position, Color(3.0, 0.2, 0.2), 0.5)
 			add_shake(10.0)
 			trigger_hit_stop(0.02)
@@ -545,9 +575,12 @@ func _process(delta):
 			flow_state = 0.0
 			if player_hp <= 0 and game_state != "GAMEOVER":
 				trigger_game_over()
-		elif b.pos.distance_to(player.position) < 45.0 and not b.has("grazed") and not player.is_invincible:
+		elif dist_to_player < 45.0 and not b.has("grazed") and not player.is_invincible:
 			b["grazed"] = true
 			score_points += 50
+			flow_state = min(flow_state + 0.1, 1.0)
+			# Mini particle effect
+			spawn_explosion(b.pos, Color(1.0, 1.0, 1.0, 0.5), 0.2)
 			audio_manager.play_sfx(3.0, -10.0)
 		elif b.pos.y > screen_size.y + 100 or b.pos.x < -100 or b.pos.x > screen_size.x + 100:
 			enemy_bullets.remove_at(i)
@@ -659,7 +692,7 @@ func _process(delta):
 	bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid)
 	
 	distance += scroll_speed * global_speed_multiplier * delta
-	ui_manager.update_hud(player_hp, int(distance) + score_points)
+	ui_manager.update_hud(player_hp, int(distance) + score_points, flow_state, player_bombs)
 	
 	queue_redraw()
 

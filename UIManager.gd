@@ -9,6 +9,8 @@ var hud_score: Label
 var hp_bar: ProgressBar
 var title_label: Label
 var leaderboard_label: Label
+var flow_label: Label
+var bomb_label: Label
 
 var game_over_container: VBoxContainer
 var final_score_label: Label
@@ -71,6 +73,26 @@ func _ready():
 	
 	hud_score.hide()
 	hp_bar.hide()
+	
+	flow_label = Label.new()
+	flow_label.position = Vector2(screen_size.x - 250, 20)
+	flow_label.add_theme_font_override("font", arcade_font)
+	flow_label.add_theme_font_size_override("font_size", 16)
+	flow_label.add_theme_color_override("font_color", Color(0.2, 1.0, 1.0))
+	flow_label.add_theme_color_override("font_outline_color", Color(0.0, 0.2, 0.4))
+	flow_label.add_theme_constant_override("outline_size", 6)
+	flow_label.hide()
+	add_child(flow_label)
+	
+	bomb_label = Label.new()
+	bomb_label.position = Vector2(20, 90)
+	bomb_label.add_theme_font_override("font", arcade_font)
+	bomb_label.add_theme_font_size_override("font_size", 16)
+	bomb_label.add_theme_color_override("font_color", Color(1.0, 0.4, 0.2))
+	bomb_label.add_theme_color_override("font_outline_color", Color(0.4, 0.0, 0.0))
+	bomb_label.add_theme_constant_override("outline_size", 6)
+	bomb_label.hide()
+	add_child(bomb_label)
 	
 	# Game Over UI
 	game_over_container = VBoxContainer.new()
@@ -137,6 +159,8 @@ func _input(event):
 		leaderboard_label.hide()
 		hud_score.show()
 		hp_bar.show()
+		flow_label.show()
+		bomb_label.show()
 		start_pressed.emit()
 
 func _on_name_submitted(new_text: String):
@@ -153,6 +177,8 @@ func show_game_over(final_score: int):
 	current_final_score = int(final_score)
 	hud_score.hide()
 	hp_bar.hide()
+	flow_label.hide()
+	bomb_label.hide()
 	final_score_label.text = "FINAL SCORE: " + str(current_final_score)
 	game_over_container.show()
 	name_input.show()
@@ -160,9 +186,21 @@ func show_game_over(final_score: int):
 	name_input.grab_focus()
 	retry_button.hide()
 
-func update_hud(hp: float, score: int):
+func update_hud(hp: float, score: int, flow: float = 0.0, bombs: int = 0):
 	hp_bar.value = hp
 	hud_score.text = "SCORE: " + str(int(score))
+	bomb_label.text = "BOMBS: " + str(bombs)
+	
+	if flow >= 1.0:
+		flow_label.text = "MAX FLOW!"
+		flow_label.add_theme_color_override("font_color", Color(1.0, 0.2, 1.0))
+		flow_label.position = Vector2(get_viewport().get_visible_rect().size.x - 220, 20) + Vector2(randf_range(-3,3), randf_range(-3,3))
+	elif flow > 0.05:
+		flow_label.text = "FLOW: " + str(int(flow * 100)) + "%"
+		flow_label.add_theme_color_override("font_color", Color(0.2, 1.0, 1.0))
+		flow_label.position = Vector2(get_viewport().get_visible_rect().size.x - 220, 20)
+	else:
+		flow_label.text = ""
 
 func load_highscores():
 	highscores.clear()
