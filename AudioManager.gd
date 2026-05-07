@@ -28,6 +28,9 @@ var playlist = [
 ]
 var current_track_idx = 0
 
+var is_transitioning = false
+var transition_timer = 0.0
+
 func _ready():
 	audio_bus_idx = AudioServer.bus_count
 	AudioServer.add_bus(audio_bus_idx)
@@ -41,6 +44,7 @@ func _ready():
 	
 	audio_stream_player = AudioStreamPlayer.new()
 	audio_stream_player.bus = "MusicBus"
+	audio_stream_player.finished.connect(_on_song_finished)
 	add_child(audio_stream_player)
 	
 	for i in range(8):
@@ -86,3 +90,7 @@ func set_pitch_scale(scale: float):
 	
 func get_pitch_scale() -> float:
 	return audio_stream_player.pitch_scale
+
+func _on_song_finished():
+	is_transitioning = true
+	transition_timer = 5.0

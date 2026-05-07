@@ -441,6 +441,10 @@ func _on_name_submitted(new_text: String):
 	main_camera.zoom = Vector2(4.0, 4.0)
 	
 	audio_manager.load_and_play_track(0)
+	var t_colors = audio_manager.playlist[0].colors
+	target_c_bg = t_colors[0]
+	target_c_neb1 = t_colors[1]
+	target_c_neb2 = t_colors[2]
 
 func spawn_player_bullet(pos: Vector2, color: Color = Color(0.2, 1.5, 3.0)):
 	player_bullets.append({ "pos": pos, "speed": 1200.0, "color": color })
@@ -576,10 +580,22 @@ func _process(delta):
 			
 	elif audio_manager.is_transitioning:
 		audio_manager.transition_timer -= delta
+		
+		# Effetto di transizione: buio totale e slow motion
+		target_c_bg = Color(0,0,0)
+		target_c_neb1 = Color(0,0,0)
+		target_c_neb2 = Color(0,0,0)
+		target_speed_multiplier = 0.5 
+		
 		if audio_manager.transition_timer <= 0:
 			audio_manager.is_transitioning = false
 			audio_manager.current_track_idx = (audio_manager.current_track_idx + 1) % audio_manager.playlist.size()
 			audio_manager.load_and_play_track(audio_manager.current_track_idx)
+			
+			var t_colors = audio_manager.playlist[audio_manager.current_track_idx].colors
+			target_c_bg = t_colors[0]
+			target_c_neb1 = t_colors[1]
+			target_c_neb2 = t_colors[2]
 	else:
 		var base_target_speed = 1.0
 		var pos = audio_manager.get_playback_position()
