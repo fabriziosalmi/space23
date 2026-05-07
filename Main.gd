@@ -16,7 +16,8 @@ var explosions = []
 var powerups = []
 var railguns = []
 var black_holes = []
-var enemy_spawn_timer = 2.0
+var wave_index = 0
+var wave_timer = 3.0
 var score_points = 0
 var shake_intensity = 0.0
 var hit_stop_timer = 0.0
@@ -36,7 +37,12 @@ var enemy_types = [
 	{
 		"hp": 15, "speed": [40.0, 70.0], "color": Color(0.8, 0.6, 0.1),
 		"pts": PackedVector2Array([Vector2(0, 30), Vector2(-35, 5), Vector2(-25, -20), Vector2(25, -20), Vector2(35, 5)]),
-		"ai": 2, "shoot": [1.0, 2.0]
+		"ai": 2, "shoot": [1.5, 3.0]
+	},
+	{ # 3: SPINNER / BULLET HELL BOSS
+		"hp": 30, "speed": [30.0, 50.0], "color": Color(0.9, 0.2, 0.9),
+		"pts": PackedVector2Array([Vector2(0, 30), Vector2(-30, 0), Vector2(0, -30), Vector2(30, 0)]),
+		"ai": 3, "shoot": [0.05, 0.05]
 	}
 ]
 
@@ -57,6 +63,7 @@ var main_camera: Camera2D
 var game_state = "TITLE" # "TITLE", "INTRO", "PLAYING"
 var player_name = "PLAYER 1"
 var player_hp = 100.0
+var flow_state = 0.0
 
 var ui_manager
 var game_over_timer = 0.0
@@ -114,6 +121,8 @@ func _ready():
     uniform float grayscale = 0.0;
     uniform vec2 bh_pos = vec2(0.5);
     uniform float bh_intensity = 0.0;
+    uniform float flow_state = 0.0;
+    uniform float audio_bass = 0.0;
     
     void fragment() {
         vec2 uv = SCREEN_UV;
@@ -145,8 +154,8 @@ func _ready():
         vec2 dir = uv - vec2(0.5);
         float dist = length(dir);
         
-        // 1. Aberrazione Cromatica Leggera (R e B shiftati ai bordi)
-        float shift = dist * 0.006;
+        // 1. Aberrazione Cromatica Progessiva (Flow State + Music Bass)
+        float shift = dist * (0.006 + flow_state * 0.015 + audio_bass * 0.015);
         float r = texture(screen_tex, uv + dir * shift).r;
         float g = texture(screen_tex, uv).g;
         float b = texture(screen_tex, uv - dir * shift).b;
@@ -370,7 +379,10 @@ func _process(delta):
 		# SUPERHOT MECHANIC: Time Dilation
 		var speed_ratio = clamp(player.velocity.length() / player.max_speed, 0.05, 1.0)
 		if player.is_dashing: speed_ratio = 1.0 # Dash forza il tempo reale
-		target_speed_multiplier = base_target_speed * speed_ratio
+		target_speed_multiplier = base_target_speed * speed_ratio * (1.0 + flow_state * 0.8)
+			
+		# Flow state increment
+		flow_state = min(flow_state + delta * 0.02, 1.0)
 			
 		# --- PARALLASSE CAMERA BASATA SUL PLAYER ---
 		# La telecamera si sposta leggermente seguendo la nave sull'asse X
@@ -381,29 +393,42 @@ func _process(delta):
 	
 	# --- GAME LOOP (Nemici e Armi) ---
 	if not is_intro and not audio_manager.is_transitioning:
-		enemy_spawn_timer -= delta
-		if enemy_spawn_timer <= 0:
-			var diff = 1.0 + (distance / 5000.0) # Difficoltà crescente con la distanza
-			enemy_spawn_timer = randf_range(3.0, 6.0) / clamp(diff * 0.5, 1.0, 3.0)
+		wave_timer -= delta
+		if wave_timer <= 0:
+			var diff = 1.0 + (distance / 4000.0) # Difficoltà crescente
 			
-			var wave_type = randi() % 3
-			var base_y = -100
-			
-			if wave_type == 0: # V-Shape Scout
+			if wave_index % 5 == 0: # V-Shape Scout
 				var cx = randf_range(200, screen_size.x - 200)
 				for w in range(5):
 					var offset_x = (w - 2) * 60
 					var offset_y = abs(w - 2) * -50
-					_spawn_enemy(0, Vector2(cx + offset_x, base_y + offset_y), diff)
-			elif wave_type == 1: # Linea Orizzontale Fighter
+					_spawn_enemy(0, Vector2(cx + offset_x, -100 + offset_y), diff)
+				wave_timer = randf_range(3.0, 4.0) / clamp(diff * 0.5, 1.0, 3.0)
+				
+			elif wave_index % 5 == 1: # Linea Orizzontale Fighter
 				var start_x = randf_range(100, screen_size.x - 300)
-				for w in range(3):
-					_spawn_enemy(1, Vector2(start_x + w * 100, base_y), diff)
-			elif wave_type == 2: # Tank con Scorta Scout
+				for w in range(4):
+					_spawn_enemy(1, Vector2(start_x + w * 90, -100), diff)
+				wave_timer = randf_range(4.0, 5.0) / clamp(diff * 0.5, 1.0, 3.0)
+				
+			elif wave_index % 5 == 2: # Tank con Missili Traccianti + Scorta
 				var cx = randf_range(200, screen_size.x - 200)
-				_spawn_enemy(2, Vector2(cx, base_y), diff) # Tank
-				_spawn_enemy(0, Vector2(cx - 80, base_y + 40), diff) # Scout sx
-				_spawn_enemy(0, Vector2(cx + 80, base_y + 40), diff) # Scout dx
+				_spawn_enemy(2, Vector2(cx, -100), diff) # Tank
+				_spawn_enemy(0, Vector2(cx - 80, -60), diff) # Scout sx
+				_spawn_enemy(0, Vector2(cx + 80, -60), diff) # Scout dx
+				wave_timer = randf_range(5.0, 6.0) / clamp(diff * 0.5, 1.0, 3.0)
+				
+			elif wave_index % 5 == 3: # Doppio Tank Incrociato
+				_spawn_enemy(2, Vector2(screen_size.x * 0.25, -100), diff)
+				_spawn_enemy(2, Vector2(screen_size.x * 0.75, -100), diff)
+				wave_timer = randf_range(6.0, 7.0) / clamp(diff * 0.5, 1.0, 3.0)
+				
+			elif wave_index % 5 == 4: # BULLET HELL SPINNER ELITE
+				var cx = screen_size.x / 2.0
+				_spawn_enemy(3, Vector2(cx, -100), diff)
+				wave_timer = randf_range(8.0, 10.0) / clamp(diff * 0.5, 1.0, 3.0)
+				
+			wave_index += 1
 			
 	for i in range(player_bullets.size() - 1, -1, -1):
 		var b = player_bullets[i]
@@ -421,6 +446,7 @@ func _process(delta):
 				spawn_explosion(b.pos, Color(0.5, 1.0, 2.0), 0.3)
 				if e.hp <= 0:
 					spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 1.0)
+					flow_state = min(flow_state + 0.05, 1.0)
 					if randf() > 0.8: # 20% drop powerup
 						powerups.append({ "pos": e.pos, "type": randi() % 4 })
 					enemies.remove_at(j)
@@ -460,14 +486,36 @@ func _process(delta):
 				e.pos = e.pos.move_toward(player.position, e.speed * 0.9 * global_speed_multiplier * delta)
 			else:
 				e.pos.x += sin(e.ai_timer * 3.0) * 80.0 * delta
-		elif e.ai_type == 2: # Tank: Insegue il player molto lento
+		elif e.ai_type == 2: # Tank: Insegue il player molto lento, missili traccianti
 			e.pos.y += e.speed * 0.5 * global_speed_multiplier * delta
 			e.pos.x = lerp(e.pos.x, player.position.x, 0.5 * delta)
 			e.shoot_timer -= delta
 			if e.shoot_timer <= 0:
-				e.shoot_timer = randf_range(2.0, 4.0)
+				e.shoot_timer = randf_range(2.5, 4.0)
 				var dir = (player.position - e.pos).normalized()
-				enemy_bullets.append({ "pos": e.pos, "dir": dir, "speed": 350.0 })
+				enemy_bullets.append({ "pos": e.pos, "dir": dir, "speed": 250.0, "homing": true })
+		elif e.ai_type == 3: # Spinner: Bullet Hell Boss
+			if e.ai_state == "ENTER":
+				e.pos.y += e.speed * global_speed_multiplier * delta
+				if e.pos.y > 200:
+					e.ai_state = "SPIN"
+			elif e.ai_state == "SPIN":
+				e.pos.y += sin(e.ai_timer * 2.0) * 20.0 * delta
+				e.pos.x += cos(e.ai_timer * 1.5) * 50.0 * delta
+				e.shoot_timer -= delta
+				if e.shoot_timer <= 0:
+					e.shoot_timer = 0.08
+					var a = e.ai_timer * 6.0 # Angolo in rotazione continua
+					var dir = Vector2(cos(a), sin(a))
+					enemy_bullets.append({ "pos": e.pos, "dir": dir, "speed": 300.0, "homing": false })
+					var dir2 = Vector2(cos(a + PI), sin(a + PI))
+					enemy_bullets.append({ "pos": e.pos, "dir": dir2, "speed": 300.0, "homing": false })
+					# Aggiungiamo anche proiettili più lenti per creare barriere
+					var dir3 = Vector2(cos(a + PI/2), sin(a + PI/2))
+					enemy_bullets.append({ "pos": e.pos, "dir": dir3, "speed": 150.0, "homing": false })
+					var dir4 = Vector2(cos(a - PI/2), sin(a - PI/2))
+					enemy_bullets.append({ "pos": e.pos, "dir": dir4, "speed": 150.0, "homing": false })
+			if e.pos.y > screen_size.y + 100: e.hp = 0
 			
 		if e.pos.distance_to(player.position) < 40.0 and not player.is_invincible:
 			spawn_explosion(player.position, Color(3.0, 0.5, 0.5), 0.8)
@@ -475,6 +523,7 @@ func _process(delta):
 			trigger_hit_stop(0.05)
 			enemies.remove_at(i)
 			player_hp -= 30.0
+			flow_state = 0.0
 			if player_hp <= 0 and game_state != "GAMEOVER":
 				trigger_game_over()
 		elif e.pos.y > screen_size.y + 100:
@@ -482,13 +531,18 @@ func _process(delta):
 			
 	for i in range(enemy_bullets.size() - 1, -1, -1):
 		var b = enemy_bullets[i]
-		b.pos += b.dir * b.speed * delta
+		if b.has("homing") and b.homing and is_instance_valid(player):
+			var desired_dir = (player.position - b.pos).normalized()
+			b.dir = b.dir.lerp(desired_dir, 1.2 * delta).normalized()
+			
+		b.pos += b.dir * b.speed * delta * global_speed_multiplier
 		if b.pos.distance_to(player.position) < 15.0 and not player.is_invincible:
 			spawn_explosion(player.position, Color(3.0, 0.2, 0.2), 0.5)
 			add_shake(10.0)
 			trigger_hit_stop(0.02)
 			enemy_bullets.remove_at(i)
 			player_hp -= 15.0
+			flow_state = 0.0
 			if player_hp <= 0 and game_state != "GAMEOVER":
 				trigger_game_over()
 		elif b.pos.distance_to(player.position) < 45.0 and not b.has("grazed") and not player.is_invincible:
@@ -554,6 +608,7 @@ func _process(delta):
 						trigger_hit_stop(0.05)
 						audio_manager.play_sfx(1.5, -5.0)
 						spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 1.0)
+						flow_state = min(flow_state + 0.05, 1.0)
 						if randf() > 0.8: powerups.append({ "pos": e.pos, "type": randi() % 4 })
 						enemies.remove_at(j)
 						score_points += 250
@@ -576,6 +631,8 @@ func _process(delta):
 				if dist < 20.0: b.pos.y = 9999
 				
 	if pp_rect and pp_rect.material:
+		pp_rect.material.set_shader_parameter("flow_state", flow_state)
+		pp_rect.material.set_shader_parameter("audio_bass", audio_manager.audio_low)
 		if black_holes.size() > 0:
 			var bh = black_holes[0]
 			var bh_uv = (bh.pos - main_camera.position + (screen_size / 2.0)) / screen_size
