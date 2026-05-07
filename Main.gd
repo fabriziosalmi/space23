@@ -41,7 +41,7 @@ var enemy_types = [
 ]
 
 # Audio
-var audio_manager: Node
+var audio_manager
 
 var current_c_bg = Color(0.005, 0.0, 0.015)
 var current_c_neb1 = Color(0.05, 0.01, 0.1)
@@ -74,7 +74,7 @@ var pp_rect: ColorRect
 
 var screen_size: Vector2
 
-var bg_renderer: Node2D
+var bg_renderer
 
 func _ready():
 	screen_size = get_viewport_rect().size
