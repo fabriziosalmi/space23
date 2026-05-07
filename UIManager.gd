@@ -23,7 +23,7 @@ var arcade_font
 func _ready():
 	arcade_font = preload("res://PressStart2P.ttf")
 	
-	layer = 99
+	layer = 101
 	var screen_size = get_viewport().get_visible_rect().size
 	
 	hud_score = Label.new()
