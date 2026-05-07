@@ -18,15 +18,22 @@ var retry_button: Button
 var highscores = []
 const SAVE_PATH = "user://space23_highscores.json"
 var current_final_score = 0
+var arcade_font
 
 func _ready():
+	arcade_font = preload("res://PressStart2P.ttf")
+	
 	layer = 99
 	var screen_size = get_viewport().get_visible_rect().size
 	
 	hud_score = Label.new()
 	hud_score.position = Vector2(20, 20)
-	hud_score.text = "Score: 0"
-	hud_score.add_theme_font_size_override("font_size", 24)
+	hud_score.text = "SCORE: 0"
+	hud_score.add_theme_font_override("font", arcade_font)
+	hud_score.add_theme_font_size_override("font_size", 16)
+	hud_score.add_theme_color_override("font_color", Color(1.0, 1.0, 0.2))
+	hud_score.add_theme_color_override("font_outline_color", Color(0.1, 0.0, 0.2))
+	hud_score.add_theme_constant_override("outline_size", 6)
 	add_child(hud_score)
 	
 	hp_bar = ProgressBar.new()
@@ -37,20 +44,29 @@ func _ready():
 	add_child(hp_bar)
 	
 	title_label = Label.new()
-	title_label.text = "SPACE23\n\nPRESS ENTER TO START"
+	title_label.text = "S P A C E 2 3\n\nPRESS ENTER TO START"
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.add_theme_font_size_override("font_size", 48)
-	title_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
-	title_label.add_theme_color_override("font_outline_color", Color(0.2, 0.5, 1.0))
-	title_label.add_theme_constant_override("outline_size", 8)
-	title_label.position = Vector2(screen_size.x / 2.0 - 250, screen_size.y / 2.0 - 150)
+	title_label.add_theme_font_override("font", arcade_font)
+	title_label.add_theme_font_size_override("font_size", 32)
+	title_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.6))
+	title_label.add_theme_color_override("font_outline_color", Color(0.2, 0.0, 0.4))
+	title_label.add_theme_constant_override("outline_size", 12)
+	title_label.add_theme_constant_override("shadow_offset_x", 4)
+	title_label.add_theme_constant_override("shadow_offset_y", 4)
+	title_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0))
+	title_label.position = Vector2(screen_size.x / 2.0 - 300, screen_size.y / 2.0 - 150)
+	title_label.size = Vector2(600, 200)
 	add_child(title_label)
 	
 	leaderboard_label = Label.new()
-	leaderboard_label.position = Vector2(screen_size.x / 2.0 - 200, screen_size.y / 2.0 + 50)
+	leaderboard_label.position = Vector2(screen_size.x / 2.0 - 200, screen_size.y / 2.0 + 80)
 	leaderboard_label.size = Vector2(400, 200)
 	leaderboard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	leaderboard_label.add_theme_font_size_override("font_size", 24)
+	leaderboard_label.add_theme_font_override("font", arcade_font)
+	leaderboard_label.add_theme_font_size_override("font_size", 16)
+	leaderboard_label.add_theme_color_override("font_color", Color(0.2, 1.0, 0.8))
+	leaderboard_label.add_theme_color_override("font_outline_color", Color(0.0, 0.2, 0.4))
+	leaderboard_label.add_theme_constant_override("outline_size", 6)
 	add_child(leaderboard_label)
 	
 	hud_score.hide()
@@ -64,19 +80,24 @@ func _ready():
 	game_over_container.hide()
 	
 	var go_label = Label.new()
-	go_label.text = "G A M E   O V E R"
+	go_label.text = "GAME OVER"
 	go_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	go_label.add_theme_font_size_override("font_size", 64)
-	go_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2))
-	go_label.add_theme_color_override("font_outline_color", Color(0.2, 0.0, 0.0))
-	go_label.add_theme_constant_override("outline_size", 12)
+	go_label.add_theme_font_override("font", arcade_font)
+	go_label.add_theme_font_size_override("font_size", 48)
+	go_label.add_theme_color_override("font_color", Color(1.0, 0.1, 0.1))
+	go_label.add_theme_color_override("font_outline_color", Color(0.4, 0.0, 0.0))
+	go_label.add_theme_constant_override("outline_size", 16)
+	go_label.add_theme_constant_override("shadow_offset_x", 5)
+	go_label.add_theme_constant_override("shadow_offset_y", 5)
+	go_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0))
 	game_over_container.add_child(go_label)
 	
 	final_score_label = Label.new()
 	final_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	final_score_label.add_theme_font_size_override("font_size", 36)
+	final_score_label.add_theme_font_override("font", arcade_font)
+	final_score_label.add_theme_font_size_override("font_size", 24)
 	final_score_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.2))
-	final_score_label.add_theme_color_override("font_outline_color", Color(0.2, 0.1, 0.0))
+	final_score_label.add_theme_color_override("font_outline_color", Color(0.4, 0.2, 0.0))
 	final_score_label.add_theme_constant_override("outline_size", 8)
 	game_over_container.add_child(final_score_label)
 	
@@ -84,12 +105,15 @@ func _ready():
 	name_input.custom_minimum_size = Vector2(300, 50)
 	name_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_input.placeholder_text = "ENTER PILOT NAME"
+	name_input.add_theme_font_override("font", arcade_font)
+	name_input.add_theme_font_size_override("font_size", 16)
 	name_input.text_submitted.connect(_on_name_submitted)
 	game_over_container.add_child(name_input)
 	
 	retry_button = Button.new()
 	retry_button.text = "R E T R Y"
-	retry_button.add_theme_font_size_override("font_size", 42)
+	retry_button.add_theme_font_override("font", arcade_font)
+	retry_button.add_theme_font_size_override("font_size", 24)
 	retry_button.pressed.connect(func(): retry_pressed.emit())
 	retry_button.hide()
 	game_over_container.add_child(retry_button)
@@ -97,6 +121,14 @@ func _ready():
 	add_child(game_over_container)
 	
 	load_highscores()
+
+func _process(delta):
+	if title_label.visible:
+		var time = Time.get_ticks_msec() / 1000.0
+		# Blink effettivo su "PRESS ENTER TO START" se volessimo,
+		# ma facciamo pulsare dolcemente i colori
+		var pulse = (sin(time * 5.0) + 1.0) * 0.5
+		title_label.add_theme_color_override("font_color", Color(1.0, 0.2 + pulse * 0.6, 0.6 + pulse * 0.4))
 
 func _input(event):
 	if title_label.visible and event.is_action_pressed("ui_accept"):
@@ -116,10 +148,10 @@ func _on_name_submitted(new_text: String):
 	name_submitted.emit(new_text)
 
 func show_game_over(final_score: int):
-	current_final_score = final_score
+	current_final_score = int(final_score)
 	hud_score.hide()
 	hp_bar.hide()
-	final_score_label.text = "FINAL SCORE: " + str(final_score)
+	final_score_label.text = "FINAL SCORE: " + str(current_final_score)
 	game_over_container.show()
 	name_input.show()
 	name_input.text = ""
@@ -128,7 +160,7 @@ func show_game_over(final_score: int):
 
 func update_hud(hp: float, score: int):
 	hp_bar.value = hp
-	hud_score.text = "Score: " + str(score)
+	hud_score.text = "SCORE: " + str(int(score))
 
 func load_highscores():
 	highscores.clear()
@@ -161,5 +193,5 @@ func _update_leaderboard_display():
 	var text = "--- TOP 5 PILOTS ---\n\n"
 	for i in range(highscores.size()):
 		var entry = highscores[i]
-		text += str(i+1) + ". " + entry.name + " : " + str(entry.score) + "\n"
+		text += str(i+1) + ". " + entry.name.substr(0, 8).rpad(8) + " " + str(int(entry.score)).pad_zeros(6) + "\n"
 	leaderboard_label.text = text

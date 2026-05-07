@@ -252,12 +252,19 @@ func _draw():
 	# 4. DRAW LAYER TOP
 	for e in layer_top:
 		if e.type == "planet":
-			draw_circle(e.pos, e.radius, e.color)
-			draw_circle(e.pos + Vector2(e.radius*0.25, e.radius*0.25), e.radius*0.8, Color(0, 0, 0, 0.6))
 			if e.ring:
 				draw_set_transform(e.pos, 0.3, Vector2(1.0, 0.3))
 				for r in range(3):
-					draw_arc(Vector2.ZERO, e.radius * 1.5 + r*2, 0, PI*2, 32, Color(1, 1, 1, 0.3), 1.5)
+					draw_arc(Vector2.ZERO, e.radius * 1.5 + r*2, PI, PI*2, 16, Color(1, 1, 1, 0.3), 1.5)
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				
+			draw_circle(e.pos, e.radius, e.color)
+			draw_circle(e.pos + Vector2(e.radius*0.25, e.radius*0.25), e.radius*0.8, Color(0, 0, 0, 0.6))
+			
+			if e.ring:
+				draw_set_transform(e.pos, 0.3, Vector2(1.0, 0.3))
+				for r in range(3):
+					draw_arc(Vector2.ZERO, e.radius * 1.5 + r*2, 0, PI, 16, Color(1, 1, 1, 0.3), 1.5)
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 				
 		elif e.type == "asteroid_group":
