@@ -162,8 +162,8 @@ func _process(delta):
 
 func _input(event):
 	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch):
-		if event.is_pressed() and not event.is_echo():
-			title_label.text = "S P A C E 2 3\n\nPRESS ANY KEY TO START\n\n" + title_label.text.split("\n\n")[-1] # Fallback just in case
+		if not event.is_pressed() and not event.is_echo():
+			title_label.text = "S P A C E 2 3\n\nTAP OR PRESS ANY KEY TO START\n\n" + title_label.text.split("\n\n")[-1] # Fallback just in case
 			title_label.hide()
 			leaderboard_label.hide()
 			hud_score.show()
