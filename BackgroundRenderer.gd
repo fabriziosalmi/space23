@@ -19,6 +19,7 @@ func _ready():
 	nebula_bg = ColorRect.new()
 	nebula_bg.size = screen_size + Vector2(400, 400) # Overscan per evitare bordi neri
 	nebula_bg.position = Vector2(-200, -200)
+	nebula_bg.show_behind_parent = true
 	var mat = ShaderMaterial.new()
 	var shader = Shader.new()
 	shader.code = """

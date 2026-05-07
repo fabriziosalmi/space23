@@ -345,12 +345,6 @@ func _on_name_submitted(new_text: String):
 	# Prepara la camera per il Super Zoom
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 	main_camera.zoom = Vector2(4.0, 4.0)
-	
-	audio_manager.load_and_play_track(0)
-	var t_colors = audio_manager.playlist[0].colors
-	target_c_bg = t_colors[0]
-	target_c_neb1 = t_colors[1]
-	target_c_neb2 = t_colors[2]
 
 func spawn_player_bullet(pos: Vector2, color: Color = Color(0.2, 1.5, 3.0)):
 	player_bullets.append({ "pos": pos, "speed": 1200.0, "color": color })
