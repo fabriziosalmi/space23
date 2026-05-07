@@ -28,9 +28,17 @@ jobs:
           version: "4.3.0"
           use-dotnet: false
 
+      - name: Download Godot Export Templates Manually
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz -O templates.zip
+          unzip -q templates.zip
+          mv templates/* ~/.local/share/godot/export_templates/4.3.stable/
+          rm -rf templates templates.zip
+
       - name: Create export_presets.cfg
         run: |
-          cat <<EOF > export_presets.cfg
+          cat <<'CFGEOF' > export_presets.cfg
           [preset.0]
           name="Web"
           platform="Web"
@@ -57,7 +65,7 @@ jobs:
           html/focus_canvas_on_start=true
           html/experimental_virtual_keyboard=false
           progressive_web_app/enabled=false
-          EOF
+          CFGEOF
 
       - name: Export Web
         run: |
