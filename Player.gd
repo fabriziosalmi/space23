@@ -1,14 +1,39 @@
 extends Node2D
 
-var max_speed = 700.0
-var acceleration = 7000.0 # Input buffer SOTA, estrema reattività
-var friction = 5000.0
+# ========== HITBOX ==========
+const HITBOX_RADIUS_BULLET: float = 5.0
+const HITBOX_RADIUS_BODY: float = 15.0
+
+# ========== MOVIMENTO ==========
+const MAX_SPEED: float = 700.0
+const ACCELERATION: float = 7000.0  # Input buffer SOTA, estrema reattività
+const FRICTION: float = 5000.0
+
+# ========== DASH ==========
+const DASH_DURATION: float = 0.15
+const DASH_COOLDOWN: float = 1.0
+const DASH_SPEED_MULT: float = 4.0
+
+# ========== FUOCO (cadenza in secondi) ==========
+const SHOOT_RATE_NORMAL: float = 0.12
+const SHOOT_RATE_BUFFED: float = 0.08
+const SHOOT_RATE_RAILGUN: float = 0.5
+const SHOOT_RATE_MIRROR_LASER: float = 0.15
+const DRONE_SHOOT_RATE: float = 0.15
+
+# Compat: alcuni accessi vengono ancora fatti via `player.max_speed`. I keep `max_speed`
+# come alias sul costante per non rompere `Main.gd`.
+var max_speed: float = MAX_SPEED
+var acceleration: float = ACCELERATION
+var friction: float = FRICTION
 var velocity = Vector2.ZERO
 var screen_size: Vector2
 
 var roll = 0.0
 var time_passed = 0.0
-var sprite: Sprite2D
+var ship_renderer: Node2D            # Node2D dedicato al disegno procedurale della nave
+var ship_bob: float = 0.0            # Hovering verticale (smoothato in _process)
+var ship_scale_y: float = 1.0        # Stretching verticale in base all'accelerazione
 var flame_mat: ShaderMaterial
 
 var is_dashing = false
@@ -27,84 +52,10 @@ var trail_history = []
 
 func _ready():
 	screen_size = get_viewport_rect().size
-	sprite = Sprite2D.new()
-	
-	# Controlliamo se l'utente ha salvato l'immagine
-	if ResourceLoader.exists("res://ship.png"):
-		sprite.texture = load("res://ship.png")
-		# Riduciamo la scala per rendere la navicella più piccola
-		sprite.scale = Vector2(0.18, 0.18)
-		
-		# MAGIA: Shader per rimuovere automaticamente lo sfondo nero e le stelle
-		# senza che tu debba usare Photoshop!
-		var mat = ShaderMaterial.new()
-		var shader = Shader.new()
-		shader.code = """
-        shader_type canvas_item;
-        void fragment() {
-            vec4 col = texture(TEXTURE, UV);
-            
-            // 1. Rimuove il nero di sfondo
-            if (col.r < 0.05 && col.g < 0.05 && col.b < 0.05) {
-                col.a = 0.0;
-            }
-            
-            // 2. Crea un Bounding Box (rettangolo) largo per non tagliare le ali o i reattori
-            // ma sufficiente a tagliare i pianeti ai bordi estremi dell'immagine.
-            if (UV.x < 0.22 || UV.x > 0.78 || UV.y < 0.02 || UV.y > 0.98) {
-                col.a = 0.0; // Nascondi i pianeti
-            }
-            
-            COLOR = col;
-        }
-		"""
-		mat.shader = shader
-		sprite.material = mat
-	else:
-		print("ATTENZIONE: Manca il file ship.png!")
-		
+
 	# --- PROCEDURAL FIRE SHADER ---
 	flame_mat = ShaderMaterial.new()
-	var flame_shader = Shader.new()
-	flame_shader.code = """
-    shader_type canvas_item;
-    uniform float power = 1.0;
-    
-    float noise(vec2 p) { return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
-    float smooth_noise(vec2 uv) {
-        vec2 lv = fract(uv); vec2 id = floor(uv);
-        lv = lv * lv * (3.0 - 2.0 * lv);
-        return mix(mix(noise(id), noise(id + vec2(1,0)), lv.x), mix(noise(id + vec2(0,1)), noise(id + vec2(1,1)), lv.x), lv.y);
-    }
-    
-    void fragment() {
-        vec2 uv = UV;
-        // Forma della fiamma: spessa sopra, fine sotto
-        float x_dist = abs(uv.x - 0.5);
-        float width = 0.5 - (uv.y * 0.4);
-        
-        // Scorrimento veloce animato
-        vec2 nuv = uv * vec2(3.0, 6.0) - vec2(0.0, TIME * 15.0);
-        float n = smooth_noise(nuv) * smooth_noise(nuv * 2.0);
-        
-        // Sfumature sui bordi e sulla punta (controllata dal power)
-        float edge_fade = smoothstep(width, width * 0.2, x_dist);
-        float y_fade = smoothstep(1.0, 0.1, uv.y / max(0.1, power)); 
-        
-        float intensity = n * edge_fade * y_fade * 3.0;
-        
-        // Colori Estremamente Estetici (HDR per Glow 100x)
-        vec3 col_core = vec3(2.5, 2.0, 1.5); // Giallo/Bianco caldissimo (HDR)
-        vec3 col_mid = vec3(2.0, 0.8, 0.0);   // Arancio esplosivo (HDR)
-        vec3 col_edge = vec3(0.0, 1.0, 2.5);  // Base Blu Ionico (HDR)
-        
-        vec3 color = mix(col_edge, col_mid, smoothstep(0.1, 0.6, intensity));
-        color = mix(color, col_core, smoothstep(0.6, 0.9, intensity));
-        
-        COLOR = vec4(color, intensity * 1.5);
-    }
-	"""
-	flame_mat.shader = flame_shader
+	flame_mat.shader = preload("res://shaders/flame.gdshader")
 	
 	# Crea 3 motori posizionati "dietro" lo sprite (essendo aggiunti prima)
 	var flame_c = ColorRect.new()
@@ -125,13 +76,19 @@ func _ready():
 	flame_r.material = flame_mat
 	add_child(flame_r)
 
-	# Aggiungi lo sprite PER ULTIMO così copre l'attaccatura del fuoco
-	add_child(sprite)
-	
+	# --- NAVE PROCEDURALE ---
+	# Aggiunto DOPO i flame, così l'attaccatura dei motori è coperta dal corpo nave.
+	ship_renderer = Node2D.new()
+	ship_renderer.name = "ShipRenderer"
+	ship_renderer.draw.connect(_on_ship_draw)
+	add_child(ship_renderer)
+
 	# --- HITBOX CORE VISUALIZER ---
+	# Mostra entrambe le hitbox: anello largo = collisione corpo nemico, dot = bullet
 	var hitbox_node = Node2D.new()
 	hitbox_node.draw.connect(func():
-		hitbox_node.draw_circle(Vector2.ZERO, 5.0, Color(1.0, 0.1, 0.5, 0.8))
+		hitbox_node.draw_arc(Vector2.ZERO, HITBOX_RADIUS_BODY, 0.0, TAU, 24, Color(1.0, 0.1, 0.5, 0.18), 1.0, true)
+		hitbox_node.draw_circle(Vector2.ZERO, HITBOX_RADIUS_BULLET, Color(1.0, 0.1, 0.5, 0.8))
 		hitbox_node.draw_circle(Vector2.ZERO, 2.5, Color(1.0, 1.0, 1.0, 1.0))
 	)
 	hitbox_node.z_index = 10
@@ -177,6 +134,83 @@ func _on_trail_draw():
 		trail_node.draw_circle(p1, 6.0, Color(1.0, 0.5, 3.0))
 		trail_node.draw_circle(p2, 6.0, Color(1.0, 0.5, 3.0))
 
+# Disegna la nave proceduralmente: fusoliera + ali (con lighting L/R modulato dal
+# roll per un fake-3D), cockpit HDR, trim neon e luci di posizione port/starboard.
+func _on_ship_draw() -> void:
+	if not ship_renderer:
+		return
+	var n: Node2D = ship_renderer
+
+	# Bias di luce: roll a destra ⇒ ala destra più illuminata, sinistra in ombra.
+	var light_bias: float = clamp(roll * 4.0, -1.0, 1.0)
+	var lit_brightness: float = 0.85 + light_bias * 0.4
+	var shadow_brightness: float = 0.85 - light_bias * 0.4
+
+	var hull_base: Color = Color(0.32, 0.40, 0.55)
+	var wing_lit: Color = Color(0.45, 0.55, 0.75) * lit_brightness
+	var wing_shadow: Color = Color(0.18, 0.22, 0.32) * shadow_brightness
+	var trim: Color = Color(0.4, 1.4, 3.0)         # Neon blue (HDR)
+	var trim_dim: Color = Color(0.2, 0.7, 1.5)
+	var cockpit_glow: Color = Color(2.5, 0.8, 3.5) # Magenta (HDR)
+	var nav_red: Color = Color(3.0, 0.4, 0.4)
+	var nav_green: Color = Color(0.4, 3.0, 0.6)
+
+	# === VERTICI (origine al centro nave, naso = -y) ===
+	var NOSE := Vector2(0, -45)
+	var SHOULDER_L := Vector2(-7, -28)
+	var SHOULDER_R := Vector2(7, -28)
+	var HULL_MID_L := Vector2(-9, -8)
+	var HULL_MID_R := Vector2(9, -8)
+	var HULL_BACK_L := Vector2(-13, 22)
+	var HULL_BACK_R := Vector2(13, 22)
+	var ENGINE_L := Vector2(-22, 25)
+	var ENGINE_R := Vector2(22, 25)
+
+	var WING_TIP_L := Vector2(-55, 14)
+	var WING_BACK_L := Vector2(-28, 23)
+	var WING_TIP_R := Vector2(55, 14)
+	var WING_BACK_R := Vector2(28, 23)
+
+	# === ALI ===
+	var left_wing := PackedVector2Array([HULL_MID_L, WING_TIP_L, WING_BACK_L, HULL_BACK_L])
+	var right_wing := PackedVector2Array([HULL_MID_R, HULL_BACK_R, WING_BACK_R, WING_TIP_R])
+	var lw_cols := PackedColorArray()
+	lw_cols.resize(4)
+	lw_cols.fill(wing_shadow)
+	var rw_cols := PackedColorArray()
+	rw_cols.resize(4)
+	rw_cols.fill(wing_lit)
+	n.draw_polygon(left_wing, lw_cols)
+	n.draw_polygon(right_wing, rw_cols)
+
+	# === FUSOLIERA ===
+	var hull := PackedVector2Array([NOSE, SHOULDER_R, HULL_MID_R, HULL_BACK_R, ENGINE_R, ENGINE_L, HULL_BACK_L, HULL_MID_L, SHOULDER_L])
+	var hull_cols := PackedColorArray()
+	hull_cols.resize(hull.size())
+	hull_cols.fill(hull_base)
+	n.draw_polygon(hull, hull_cols)
+
+	# === TRIM NEON (HDR) ===
+	# Profili ali
+	n.draw_polyline(PackedVector2Array([HULL_MID_L, WING_TIP_L, WING_BACK_L]), trim, 1.2, true)
+	n.draw_polyline(PackedVector2Array([HULL_MID_R, WING_TIP_R, WING_BACK_R]), trim, 1.2, true)
+	# Spina dorsale
+	n.draw_polyline(PackedVector2Array([NOSE, Vector2(0, -10), Vector2(0, 22)]), trim_dim, 1.0, true)
+	# Riga sotto-cockpit
+	n.draw_line(SHOULDER_L, SHOULDER_R, trim_dim, 1.0, true)
+	# Profilo fusoliera
+	n.draw_polyline(PackedVector2Array([NOSE, SHOULDER_R, HULL_MID_R, HULL_BACK_R, ENGINE_R]), trim_dim, 1.0, true)
+	n.draw_polyline(PackedVector2Array([NOSE, SHOULDER_L, HULL_MID_L, HULL_BACK_L, ENGINE_L]), trim_dim, 1.0, true)
+
+	# === COCKPIT (a forma di lacrima) ===
+	var cockpit := PackedVector2Array([Vector2(0, -32), Vector2(-4, -18), Vector2(0, -8), Vector2(4, -18)])
+	n.draw_polygon(cockpit, PackedColorArray([cockpit_glow * 1.3, cockpit_glow, cockpit_glow * 1.5, cockpit_glow]))
+
+	# === LUCI DI POSIZIONE port/starboard, pulsanti ===
+	var pulse: float = 0.7 + 0.3 * sin(time_passed * 4.0)
+	n.draw_circle(WING_TIP_L, 2.5, nav_red * pulse)
+	n.draw_circle(WING_TIP_R, 2.5, nav_green * pulse)
+
 var can_move = true
 var shoot_timer = 0.0
 var fire_buff_timer = 0.0
@@ -197,7 +231,7 @@ func _process(delta):
 		drone_angle += engine_delta * 4.0
 		drone_shoot_timer -= engine_delta
 		if drone_shoot_timer <= 0:
-			drone_shoot_timer = 0.15
+			drone_shoot_timer = DRONE_SHOOT_RATE
 			if get_parent().has_method("spawn_player_bullet"):
 				var p1 = position + Vector2(cos(drone_angle), sin(drone_angle)) * 60.0
 				var p2 = position + Vector2(cos(drone_angle + PI), sin(drone_angle + PI)) * 60.0
@@ -219,23 +253,23 @@ func _process(delta):
 		shoot_timer -= delta
 		if (Input.is_key_pressed(KEY_SPACE) or is_touching) and shoot_timer <= 0:
 			if weapon_type == 1:
-				shoot_timer = 0.5 # Railgun rate
+				shoot_timer = SHOOT_RATE_RAILGUN
 				if get_parent().has_method("spawn_railgun"):
 					get_parent().spawn_railgun(position + Vector2(0, -30))
 			elif weapon_type == 2:
-				shoot_timer = 0.15 # Mirror Laser
+				shoot_timer = SHOOT_RATE_MIRROR_LASER
 				if get_parent().has_method("spawn_player_bullet"):
 					get_parent().spawn_player_bullet(position + Vector2(0, -20), Vector2(-0.8, -1).normalized(), Color(0.2, 3.0, 1.5), 3)
 					get_parent().spawn_player_bullet(position + Vector2(0, -20), Vector2(0.8, -1).normalized(), Color(0.2, 3.0, 1.5), 3)
 			elif fire_buff_timer > 0.0:
-				shoot_timer = 0.08 # Più veloce e 4 cannoni!
+				shoot_timer = SHOOT_RATE_BUFFED  # Più veloce e 4 cannoni!
 				if get_parent().has_method("spawn_player_bullet"):
 					get_parent().spawn_player_bullet(position + Vector2(-30, -10))
 					get_parent().spawn_player_bullet(position + Vector2(-15, -20))
 					get_parent().spawn_player_bullet(position + Vector2(15, -20))
 					get_parent().spawn_player_bullet(position + Vector2(30, -10))
 			else:
-				shoot_timer = 0.12 # Cadenza normale
+				shoot_timer = SHOOT_RATE_NORMAL
 				if get_parent().has_method("spawn_player_bullet"):
 					get_parent().spawn_player_bullet(position + Vector2(-22, -10))
 					get_parent().spawn_player_bullet(position + Vector2(22, -10))
@@ -245,7 +279,7 @@ func _process(delta):
 		
 	if is_dashing:
 		dash_timer -= delta # Real time! Il dash fotte il tempo
-		velocity = dash_dir * (max_speed * 4.0)
+		velocity = dash_dir * (MAX_SPEED * DASH_SPEED_MULT)
 		is_invincible = true
 		if dash_timer <= 0:
 			is_dashing = false
@@ -254,16 +288,16 @@ func _process(delta):
 		is_invincible = false
 		if input_dir.length() > 0:
 			input_dir = input_dir.normalized()
-			velocity = velocity.move_toward(input_dir * max_speed, acceleration * delta)
-			
+			velocity = velocity.move_toward(input_dir * MAX_SPEED, ACCELERATION * delta)
+
 			# Attiva Dash
 			if Input.is_key_pressed(KEY_SHIFT) and dash_cooldown <= 0:
 				is_dashing = true
-				dash_timer = 0.15 # Durata del dash
-				dash_cooldown = 1.0
+				dash_timer = DASH_DURATION
+				dash_cooldown = DASH_COOLDOWN
 				dash_dir = input_dir
 		else:
-			velocity = velocity.move_toward(Vector2.ZERO, friction * delta)
+			velocity = velocity.move_toward(Vector2.ZERO, FRICTION * delta)
 		
 	position += velocity * delta
 	position.x = clamp(position.x, 80, screen_size.x - 80)
@@ -274,34 +308,33 @@ func _process(delta):
 	roll = lerp(roll, target_roll, 10.0 * delta)
 	rotation = roll
 	
-	# Effetti di stretching e hovering
-	if sprite.texture != null:
-		# Hovering quando ferma
-		var speed_ratio = velocity.length() / max_speed
-		var bob = sin(time_passed * 6.0) * 10.0 * (1.0 - speed_ratio)
-		sprite.position.y = bob
-		$HitboxVisualizer.position.y = bob
-		# Stretching basato sull'accelerazione
-		var base_scale = 0.18
-		var target_scale_y = base_scale
-		var target_power = 0.5
-		
-		if input_dir.y < 0: 
-			target_scale_y = base_scale * 1.1 # Si allunga
-			target_power = 1.0 # Fuoco al massimo
-		elif input_dir.y > 0: 
-			target_scale_y = base_scale * 0.9 # Si accorcia
-			target_power = 0.2 # Fuoco al minimo
-			
-		sprite.scale.y = lerp(sprite.scale.y, target_scale_y, 12.0 * delta)
-		
-		# Aggiorna l'intensità del fuoco nel material
-		if flame_mat:
-			var current_power = flame_mat.get_shader_parameter("power")
-			if current_power == null: current_power = 0.5
-			var new_power = lerp(current_power, target_power, 15.0 * delta)
-			flame_mat.set_shader_parameter("power", new_power)
-			
+	# Effetti di stretching e hovering (nave procedurale)
+	var speed_ratio = velocity.length() / MAX_SPEED
+	ship_bob = sin(time_passed * 6.0) * 10.0 * (1.0 - speed_ratio)
+	$HitboxVisualizer.position.y = ship_bob
+
+	# Stretching verticale + intensità fuoco in base alla direzione di input
+	var target_scale_y: float = 1.0
+	var target_power: float = 0.5
+	if input_dir.y < 0:
+		target_scale_y = 1.1  # Si allunga
+		target_power = 1.0    # Fuoco al massimo
+	elif input_dir.y > 0:
+		target_scale_y = 0.9  # Si accorcia
+		target_power = 0.2    # Fuoco al minimo
+	ship_scale_y = lerp(ship_scale_y, target_scale_y, 12.0 * delta)
+
+	if ship_renderer:
+		ship_renderer.position.y = ship_bob
+		ship_renderer.scale.y = ship_scale_y
+		ship_renderer.queue_redraw()
+
+	# Aggiorna l'intensità del fuoco nel material
+	if flame_mat:
+		var current_power = flame_mat.get_shader_parameter("power")
+		if current_power == null: current_power = 0.5
+		flame_mat.set_shader_parameter("power", lerp(current_power, target_power, 15.0 * delta))
+
 	# Aggiorna il trail procedurale
 	trail_history.push_front({ "pos": global_position, "rot": global_rotation })
 	if trail_history.size() > (20 if is_dashing else 10):

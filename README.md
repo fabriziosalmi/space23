@@ -17,11 +17,31 @@ There are almost no static assets. Ships, trails, explosions, black holes, and t
 - **Granular Audio System**: Sound effects are generated procedurally by taking micro-slices of the currently playing music track, guaranteeing perfect audio-visual synchrony.
 
 ## 🛠 Tech Stack
-- **Engine**: Godot 4.3+ (GDScript)
+- **Engine**: Godot 4.4 (GDScript)
 - **Target**: HTML5 (WebAssembly / WebGL 2)
-- **Rendering**: Custom Fragment Shaders (ACES Tonemapping, Screen-space Distortion, Chromatic Aberration).
+- **Rendering**: Custom Fragment Shaders in `shaders/*.gdshader` (ACES Tonemapping, Screen-space Distortion, Chromatic Aberration).
 
 ## 🚀 Running the Game
-1. Open the project in Godot 4.
-2. Hit `F5` to run `Main.tscn`.
-3. To build for the web, ensure `export_presets.cfg` is configured for Web, then export via Editor or CLI.
+1. Install [Git LFS](https://git-lfs.com) — the audio tracks are managed by LFS (see below).
+2. Open the project in Godot 4.4.
+3. Hit `F5` to run `Main.tscn`.
+4. To build for the web, the CI generates `export_presets.cfg` automatically; in locale crealo via Editor → Project → Export.
+
+## 📦 Git LFS
+I file binari pesanti (`*.mp3`, `screenshot.png`) sono dichiarati come LFS in `.gitattributes`. Per chi clona:
+
+```bash
+git lfs install
+git clone <repo>
+# `git lfs pull` parte automaticamente alla checkout se LFS è installato.
+```
+
+Per la **migrazione one-shot** della history esistente (riscrive i commit, da fare una volta sola sul branch `main`):
+
+```bash
+git lfs install
+git lfs migrate import --everything --include="*.mp3,screenshot.png"
+git push --force-with-lease origin main
+```
+
+Dopo la migrazione il repo passa da ~16 MB a < 1 MB di blob git regolari.

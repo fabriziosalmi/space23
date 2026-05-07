@@ -1,29 +1,15 @@
-[
-  {
-    "type": "v_shape",
-    "count": 5,
-    "delay": 3.0
-  },
-  {
-    "type": "invaders",
-    "count": 6,
-    "delay": 5.0
-  },
-  {
-    "type": "horizontal",
-    "count": 4,
-    "delay": 4.0
-  },
-  {
-    "type": "tank_escort",
-    "delay": 5.0
-  },
-  {
-    "type": "double_tank",
-    "delay": 6.0
-  },
-  {
-    "type": "spinner",
-    "delay": 8.0
-  }
-]
+{
+  "waves": [
+    { "type": "v_shape",     "count": 5, "delay": 3.0, "min_distance": 0 },
+    { "type": "invaders",    "count": 6, "delay": 5.0, "min_distance": 0 },
+    { "type": "horizontal",  "count": 4, "delay": 4.0, "min_distance": 0 },
+    { "type": "tank_escort",             "delay": 5.0, "min_distance": 800 },
+    { "type": "double_tank",             "delay": 6.0, "min_distance": 1500 },
+    { "type": "spinner",                 "delay": 8.0, "min_distance": 3000 }
+  ],
+  "fillers": [
+    { "type": "v_shape",    "count": 3, "delay": 2.0 },
+    { "type": "horizontal", "count": 2, "delay": 1.8 },
+    { "type": "invaders",   "count": 4, "delay": 2.5 }
+  ]
+}

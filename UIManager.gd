@@ -22,6 +22,7 @@ const SAVE_PATH = "user://space23_highscores.json"
 var current_final_score = 0
 var start_button: Button
 var boss_hp_bar: ProgressBar
+var boss_hp_label: Label
 var arcade_font
 
 func _ready():
@@ -100,7 +101,30 @@ func _ready():
 	bomb_label.add_theme_constant_override("outline_size", 6)
 	bomb_label.hide()
 	add_child(bomb_label)
-	
+
+	# Boss HP UI (centrato in alto)
+	boss_hp_label = Label.new()
+	boss_hp_label.text = "WARNING — MOTHER SHIP"
+	boss_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boss_hp_label.size = Vector2(600, 24)
+	boss_hp_label.position = Vector2(screen_size.x / 2.0 - 300, 18)
+	boss_hp_label.add_theme_font_override("font", arcade_font)
+	boss_hp_label.add_theme_font_size_override("font_size", 14)
+	boss_hp_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.3))
+	boss_hp_label.add_theme_color_override("font_outline_color", Color(0.4, 0.0, 0.0))
+	boss_hp_label.add_theme_constant_override("outline_size", 6)
+	boss_hp_label.hide()
+	add_child(boss_hp_label)
+
+	boss_hp_bar = ProgressBar.new()
+	boss_hp_bar.size = Vector2(600, 14)
+	boss_hp_bar.position = Vector2(screen_size.x / 2.0 - 300, 46)
+	boss_hp_bar.max_value = 100
+	boss_hp_bar.value = 0
+	boss_hp_bar.show_percentage = false
+	boss_hp_bar.hide()
+	add_child(boss_hp_bar)
+
 	# Game Over UI
 	game_over_container = VBoxContainer.new()
 	game_over_container.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -163,7 +187,6 @@ func _process(delta):
 func _input(event):
 	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch):
 		if not event.is_pressed() and not event.is_echo():
-			title_label.text = "S P A C E 2 3\n\nTAP OR PRESS ANY KEY TO START\n\n" + title_label.text.split("\n\n")[-1] # Fallback just in case
 			title_label.hide()
 			leaderboard_label.hide()
 			hud_score.show()
@@ -188,12 +211,26 @@ func show_game_over(final_score: int):
 	hp_bar.hide()
 	flow_label.hide()
 	bomb_label.hide()
+	if boss_hp_bar: boss_hp_bar.hide()
+	if boss_hp_label: boss_hp_label.hide()
 	final_score_label.text = "FINAL SCORE: " + str(current_final_score)
 	game_over_container.show()
 	name_input.show()
 	name_input.text = ""
 	name_input.grab_focus()
 	retry_button.hide()
+
+func update_boss_hp(hp: float, max_hp: float):
+	if not boss_hp_bar:
+		return
+	if max_hp <= 0.0 or hp <= 0.0:
+		boss_hp_bar.hide()
+		if boss_hp_label: boss_hp_label.hide()
+		return
+	boss_hp_bar.max_value = max_hp
+	boss_hp_bar.value = hp
+	boss_hp_bar.show()
+	if boss_hp_label: boss_hp_label.show()
 
 func hide_game_over():
 	game_over_container.hide()

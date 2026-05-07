@@ -2,8 +2,9 @@
 .godot/
 *.translation
 *.pck
+# export_presets.cfg viene generato dalla CI (vedi .github/workflows/deploy.yml).
+# Se in locale lo crei a mano, rimuovi la riga sotto e committalo.
 export_presets.cfg
-*.import
 
 # macOS
 .DS_Store

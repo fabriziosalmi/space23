@@ -1,5 +1,60 @@
 extends Node2D
 
+# ========== TUNING CONSTANTS ==========
+# Cambiando questi valori si tara il gioco senza cercare numeri sparsi nel codice.
+
+# Pooling
+const ENEMY_BULLET_POOL_SIZE: int = 2500
+
+# Combat / collisioni
+const PLAYER_BULLET_DAMAGE: int = 1
+const ENEMY_BODY_COLLISION_DAMAGE: float = 30.0
+const ENEMY_BULLET_DAMAGE: float = 15.0
+const PLAYER_BULLET_HIT_RADIUS: float = 35.0   # player bullet → enemy
+const GRAZE_RADIUS: float = 35.0               # bullet → player
+
+# Score
+const SCORE_PER_KILL: int = 250
+const SCORE_PER_BOSS: int = 5000
+const SCORE_PER_GRAZE: int = 50
+
+# Powerup drop
+const POWERUP_DROP_CHANCE: float = 0.20
+
+# Bomb
+const STARTING_BOMBS: int = 3
+const BOMB_SHAKE: float = 80.0
+const BOMB_ENEMY_DAMAGE: int = 50
+
+# Difficulty curve
+const DIFF_DISTANCE_DIVISOR: float = 4000.0
+
+# Boss
+const BOSS_SPAWN_BEFORE_TRACK_END: float = 30.0
+const BOSS_TYPE_INDEX: int = 5
+
+# Player HP / Camera
+const PLAYER_HP_MAX: float = 100.0
+const PLAYER_HEAL: float = 40.0
+const CAMERA_SHAKE_MAX: float = 80.0
+const INTRO_ZOOM: float = 4.0
+const GAMEOVER_ZOOM: float = 2.5
+
+# Black holes
+const BH_PULL_RADIUS: float = 250.0
+const BH_PULL_FORCE_PROJECTILE: float = 800.0
+const BH_PULL_FORCE_PLAYER_BULLET: float = 1200.0
+const BH_LIFE: float = 6.0
+const BH_ABSORB_RADIUS: float = 20.0
+const BH_GRAVITY_RADIUS: float = 500.0
+
+# Flow
+const FLOW_GAIN_PER_SEC: float = 0.08
+const FLOW_DECAY_PER_SEC: float = 0.05
+const FLOW_GAIN_PER_KILL: float = 0.05
+const FLOW_GAIN_PER_GRAZE: float = 0.10
+const FLOW_TOP_HALF_THRESHOLD: float = 0.5
+
 var distance = 0.0
 var scroll_speed = 100.0 # pixels per second
 var is_playing = false
@@ -13,7 +68,10 @@ var enemies = []
 var player_bullets = []
 var active_enemy_bullets = []
 var pool_enemy_bullets = []
-var waves_data = []
+var waves_pool = []          # Tutte le wave definite, filtrate per min_distance
+var fillers_pool = []        # Pattern leggeri iniettati tra wave principali
+var wave_queue = []          # Wave shuffle-queue corrente (consumata e rigenerata)
+var waves_since_filler = 0
 var explosions = []
 var powerups = []
 var railguns = []
@@ -21,6 +79,7 @@ var black_holes = []
 var wave_index = 0
 var wave_timer = 3.0
 var score_points = 0
+var has_boss_spawned: bool = false
 var shake_intensity = 0.0
 var hit_stop_timer = 0.0
 var sfx_players = []
@@ -129,87 +188,7 @@ func _ready():
 	pp_rect.size = screen_size
 	pp_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var pp_mat = ShaderMaterial.new()
-	var pp_shader = Shader.new()
-	pp_shader.code = """
-    shader_type canvas_item;
-    uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
-    uniform float zoom_blur = 0.0;
-    uniform float grayscale = 0.0;
-    uniform vec2 bh_pos = vec2(0.5);
-    uniform float bh_intensity = 0.0;
-    uniform float flow_state = 0.0;
-    uniform float audio_bass = 0.0;
-    
-    void fragment() {
-        vec2 uv = SCREEN_UV;
-        
-        // --- Distorsione a Clessidra (Pinch Laterale) ---
-        // Tira le coordinate UV verso il centro lungo l'asse X, in base all'altezza Y
-        vec2 center_dist = uv - vec2(0.5);
-        float pinch = sin(uv.y * 3.14159) * 0.06; // Forza della distorsione
-        uv.x -= center_dist.x * pinch;
-        
-        // --- BUCO NERO (Gravitational Lensing) ---
-        bool in_bh = false;
-        if (bh_intensity > 0.0) {
-            vec2 bh_dir = uv - bh_pos;
-            bh_dir.x *= 1.77; // Correzione aspect ratio
-            float bh_dist = length(bh_dir);
-            if (bh_dist < 0.5) {
-                float pull = smoothstep(0.5, 0.0, bh_dist);
-                uv -= bh_dir * (pull * pull) * bh_intensity * 0.8;
-                if (bh_dist < 0.02 * bh_intensity) {
-                    COLOR = vec4(0.0, 0.0, 0.0, 1.0);
-                    in_bh = true;
-                }
-            }
-        }
-        
-        if (!in_bh) {
-            // Ricalcola la direzione dopo la distorsione per aberrazione e vignettatura
-        vec2 dir = uv - vec2(0.5);
-        float dist = length(dir);
-        
-        // 1. Aberrazione Cromatica Progessiva (Flow State + Music Bass)
-        float shift = dist * (0.006 + flow_state * 0.015 + audio_bass * 0.015);
-        float r = texture(screen_tex, uv + dir * shift).r;
-        float g = texture(screen_tex, uv).g;
-        float b = texture(screen_tex, uv - dir * shift).b;
-        vec3 color = vec3(r, g, b);
-        
-        // 2. Vignettatura Cinematografica
-        float vignette = smoothstep(0.8, 0.2, dist);
-        color *= mix(0.4, 1.0, vignette);
-        
-        // 3. Scanlines CRT sottilissime
-        float scanline = sin(uv.y * 1000.0) * 0.03;
-        color -= scanline;
-        
-        // 4. Zoom Blur FX (Esplosioni / Fotofinish)
-        if (zoom_blur > 0.0) {
-            vec3 b_color = vec3(0.0);
-            float tot = 0.0;
-            for(int i=0; i<12; i++){
-                float f = float(i) / 12.0;
-                float w = 1.0 - f;
-                vec2 s_uv = uv + center_dist * f * zoom_blur;
-                b_color += texture(screen_tex, s_uv).rgb * w;
-                tot += w;
-            }
-            color = mix(color, b_color / tot, min(zoom_blur * 4.0, 1.0));
-        }
-        
-        // 5. Grayscale FX (Game Over)
-        if (grayscale > 0.0) {
-            float gray = dot(color, vec3(0.299, 0.587, 0.114));
-            color = mix(color, vec3(gray), grayscale);
-        }
-        
-        COLOR = vec4(color, 1.0);
-        }
-    }
-    """
-	pp_mat.shader = pp_shader
+	pp_mat.shader = preload("res://shaders/post.gdshader")
 	pp_rect.material = pp_mat
 	canvas_layer.add_child(pp_rect)
 	add_child(canvas_layer)
@@ -226,10 +205,17 @@ func _ready():
 	if file:
 		var json = JSON.new()
 		if json.parse(file.get_as_text()) == OK:
-			waves_data = json.get_data()
-			
-	for i in range(2500):
-		pool_enemy_bullets.append({ "pos": Vector2.ZERO, "dir": Vector2.ZERO, "speed": 0.0, "homing": false, "grazed": false })	
+			var data = json.get_data()
+			# Backward compat: array semplice = lista wave senza fillers
+			if typeof(data) == TYPE_ARRAY:
+				waves_pool = data
+				fillers_pool = []
+			elif typeof(data) == TYPE_DICTIONARY:
+				waves_pool = data.get("waves", [])
+				fillers_pool = data.get("fillers", [])
+
+	for i in range(ENEMY_BULLET_POOL_SIZE):
+		pool_enemy_bullets.append({ "pos": Vector2.ZERO, "dir": Vector2.ZERO, "speed": 0.0, "homing": false, "grazed": false })
 	player.can_move = false
 	game_state = "TITLE"
 
@@ -241,7 +227,7 @@ func _on_start_pressed():
 	
 	# Prepara la camera per il Super Zoom
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
-	main_camera.zoom = Vector2(4.0, 4.0)
+	main_camera.zoom = Vector2(INTRO_ZOOM, INTRO_ZOOM)
 
 func _on_name_submitted(new_text: String):
 	player_name = new_text
@@ -299,13 +285,15 @@ func _on_retry_pressed():
 	add_shake(150.0)
 	trigger_hit_stop(0.5)
 	
-	player_hp = 100.0
-	player_bombs = 3
+	player_hp = PLAYER_HP_MAX
+	player_bombs = STARTING_BOMBS
 	score_points = 0
 	flow_state = 0.0
 	distance = 0.0
 	wave_timer = 3.0
 	wave_index = 0
+	wave_queue = []
+	waves_since_filler = 0
 	
 	player.position = Vector2(screen_size.x / 2.0, screen_size.y - 100)
 	player.velocity = Vector2.ZERO
@@ -319,8 +307,8 @@ func _on_retry_pressed():
 	player_bullets.clear()
 	active_enemy_bullets.clear()
 	pool_enemy_bullets.clear()
-	for i in range(2500):
-		pool_enemy_bullets.append({ "pos": Vector2.ZERO, "dir": Vector2.ZERO, "speed": 0.0, "homing": false, "grazed": false })	
+	for i in range(ENEMY_BULLET_POOL_SIZE):
+		pool_enemy_bullets.append({ "pos": Vector2.ZERO, "dir": Vector2.ZERO, "speed": 0.0, "homing": false, "grazed": false })
 	powerups.clear()
 	railguns.clear()
 	black_holes.clear()
@@ -329,7 +317,7 @@ func _on_retry_pressed():
 	game_state = "PLAYING"
 	game_over_timer = 0.0
 	is_intro = false
-	remove_meta("has_boss_spawned")
+	has_boss_spawned = false
 	
 	audio_manager.load_and_play_track(0)
 	
@@ -367,36 +355,61 @@ func spawn_railgun(pos: Vector2):
 func trigger_smart_bomb():
 	player_bombs -= 1
 	audio_manager.play_sfx(0.2, 5.0)
-	add_shake(80.0)
-	
+	add_shake(BOMB_SHAKE)
+
 	# Crea una super esplosione bianca
 	spawn_explosion(player.position, Color(10.0, 10.0, 10.0), 3.0, true)
-	
+
 	# Distruggi tutti i proiettili nemici
 	for b in active_enemy_bullets:
 		spawn_explosion(b.pos, Color(1.0, 0.5, 0.5), 0.2)
 		pool_enemy_bullets.append(b)
 	active_enemy_bullets.clear()
-	
+
 	# Danneggia o distruggi nemici
 	for i in range(enemies.size() - 1, -1, -1):
 		var e = enemies[i]
-		e.hp -= 50
+		e.hp -= BOMB_ENEMY_DAMAGE
 		e.hit_flash = 1.0
 		if e.hp <= 0:
 			spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 1.0)
 			score_points += 100
 			enemies.remove_at(i)
 
+func _build_wave_queue() -> void:
+	# Filtra le wave disponibili in base alla distance corrente, poi mescola.
+	var available = []
+	for w in waves_pool:
+		if distance >= float(w.get("min_distance", 0)):
+			available.append(w)
+	available.shuffle()
+	wave_queue = available
+
+func _next_wave() -> Variant:
+	# Iniettiamo un filler ogni ~2 wave principali (40% dopo la 2°), per evitare
+	# pattern prevedibili senza spammare nemici.
+	waves_since_filler += 1
+	if waves_since_filler >= 2 and fillers_pool.size() > 0 and randf() < 0.4:
+		waves_since_filler = 0
+		return fillers_pool[randi() % fillers_pool.size()]
+	if wave_queue.is_empty():
+		_build_wave_queue()
+	if wave_queue.is_empty():
+		return null
+	return wave_queue.pop_back()
+
 func _spawn_enemy(type_idx: int, pos: Vector2, diff: float):
 	var e_type = enemy_types[type_idx]
+	var hp_value = int(e_type.hp * diff)
 	enemies.append({
 		"pos": pos,
-		"hp": int(e_type.hp * diff),
+		"hp": hp_value,
+		"max_hp": hp_value,
 		"speed": randf_range(e_type.speed[0], e_type.speed[1]) * diff,
 		"ai_type": e_type.ai,
 		"ai_timer": 0.0,
 		"ai_state": "ENTER",
+		"charge_timer": 0.0,
 		"shoot_timer": randf_range(e_type.shoot[0], e_type.shoot[1]),
 		"color": e_type.color,
 		"pts": e_type.pts,
@@ -434,7 +447,7 @@ func _process(delta):
 		game_over_timer += delta
 		
 		# Fotofinish effect: slow motion estremo, zoom e blur!
-		main_camera.zoom = main_camera.zoom.lerp(Vector2(2.5, 2.5), 0.8 * delta)
+		main_camera.zoom = main_camera.zoom.lerp(Vector2(GAMEOVER_ZOOM, GAMEOVER_ZOOM), 0.8 * delta)
 		main_camera.position = main_camera.position.lerp(player.position, 1.5 * delta)
 		audio_manager.audio_stream_player.pitch_scale = lerp(audio_manager.audio_stream_player.pitch_scale, 0.01, 1.0 * delta)
 		
@@ -475,7 +488,10 @@ func _process(delta):
 			audio_manager.is_transitioning = false
 			audio_manager.current_track_idx = (audio_manager.current_track_idx + 1) % audio_manager.playlist.size()
 			audio_manager.load_and_play_track(audio_manager.current_track_idx)
-			
+
+			# Nuova traccia → il boss della prossima traccia deve poter spawnare
+			has_boss_spawned = false
+
 			var t_colors = audio_manager.playlist[audio_manager.current_track_idx].colors
 			target_c_bg = t_colors[0]
 			target_c_neb1 = t_colors[1]
@@ -497,11 +513,11 @@ func _process(delta):
 			
 		# DMC Style Risk/Reward: Gioca aggressivo (nella parte alta dello schermo)
 		var player_y_ratio = player.position.y / screen_size.y
-		if player_y_ratio < 0.5:
-			flow_state = min(flow_state + delta * 0.08, 1.0)
+		if player_y_ratio < FLOW_TOP_HALF_THRESHOLD:
+			flow_state = min(flow_state + delta * FLOW_GAIN_PER_SEC, 1.0)
 			score_points += int(15 * delta * (1.0 - player_y_ratio))
 		else:
-			flow_state = max(flow_state - delta * 0.05, 0.0)
+			flow_state = max(flow_state - delta * FLOW_DECAY_PER_SEC, 0.0)
 			
 		# --- PARALLASSE CAMERA BASATA SUL PLAYER ---
 		# La telecamera si sposta leggermente seguendo la nave sull'asse X
@@ -514,22 +530,22 @@ func _process(delta):
 		if audio_manager.audio_stream_player.stream:
 			var track_len = audio_manager.audio_stream_player.stream.get_length()
 			var pos = audio_manager.get_playback_position()
-			if pos > track_len - 30.0 and not get_meta("has_boss_spawned", false):
-				set_meta("has_boss_spawned", true)
-				_spawn_enemy(5, Vector2(screen_size.x / 2.0, -200), 1.0 + (distance / 4000.0))
+			if pos > track_len - BOSS_SPAWN_BEFORE_TRACK_END and not has_boss_spawned:
+				has_boss_spawned = true
+				_spawn_enemy(BOSS_TYPE_INDEX, Vector2(screen_size.x / 2.0, -200), 1.0 + (distance / DIFF_DISTANCE_DIVISOR))
 				audio_manager.play_sfx(0.5, 10.0) # Evil boss sound
 				add_shake(50.0)
-				
+
 		wave_timer -= delta
 		if wave_timer <= 0:
-			var diff = 1.0 + (distance / 4000.0) # Difficoltà crescente
-			
-			if waves_data.size() > 0:
-				var w_data = waves_data[wave_index % waves_data.size()]
+			var diff = 1.0 + (distance / DIFF_DISTANCE_DIVISOR) # Difficoltà crescente
+
+			var w_data = _next_wave()
+			if w_data != null:
 				var type = w_data.get("type", "v_shape")
 				var count = w_data.get("count", 1)
 				wave_timer = w_data.get("delay", 5.0) / clamp(diff * 0.5, 1.0, 3.0)
-				
+
 				if type == "v_shape":
 					var cx = randf_range(200, screen_size.x - 200)
 					for w in range(count):
@@ -555,8 +571,11 @@ func _process(delta):
 					var start_x = (screen_size.x / 2.0) - ((count/2) * 80)
 					for w in range(count):
 						_spawn_enemy(4, Vector2(start_x + w * 80, -100 - (w%2)*40), diff)
-					
+
 				wave_index += 1
+			else:
+				# Nessuna wave disponibile (es. distance=0 e tutte filtrate): riprova presto
+				wave_timer = 1.0
 			
 	for i in range(player_bullets.size() - 1, -1, -1):
 		var b = player_bullets[i]
@@ -564,8 +583,8 @@ func _process(delta):
 		# Gravità dinamica per i proiettili del giocatore
 		for bh in black_holes:
 			var d = b.pos.distance_to(bh.pos)
-			if d < 250.0:
-				var pull = (bh.pos - b.pos).normalized() * (1.0 - d/250.0) * 1200.0 * delta
+			if d < BH_PULL_RADIUS:
+				var pull = (bh.pos - b.pos).normalized() * (1.0 - d/BH_PULL_RADIUS) * BH_PULL_FORCE_PLAYER_BULLET * delta
 				b.dir = (b.dir * b.speed + pull).normalized()
 				
 		b.pos += b.dir * b.speed * delta
@@ -580,28 +599,28 @@ func _process(delta):
 		var hit = false
 		for j in range(enemies.size() - 1, -1, -1):
 			var e = enemies[j]
-			if b.pos.distance_to(e.pos) < 35.0:
-				e.hp -= 1
+			if b.pos.distance_to(e.pos) < PLAYER_BULLET_HIT_RADIUS:
+				e.hp -= PLAYER_BULLET_DAMAGE
 				hit = true
 				e.hit_flash = 0.1 # Feedback visivo
 				spawn_explosion(b.pos, Color(0.5, 1.0, 2.0), 0.3)
 				if e.hp <= 0:
-					if e.ai_type == 5:
+					if e.ai_type == BOSS_TYPE_INDEX:
 						if is_instance_valid(ui_manager):
 							ui_manager.update_boss_hp(0, 100)
-						score_points += 5000
+						score_points += SCORE_PER_BOSS
 						spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 3.0, true)
 						audio_manager.play_sfx(0.2, 10.0)
 						add_shake(100.0)
 						trigger_hit_stop(2.0)
 					else:
 						spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 1.0)
-						
-					flow_state = min(flow_state + 0.05, 1.0)
-					if randf() > 0.8: # 20% drop powerup
+
+					flow_state = min(flow_state + FLOW_GAIN_PER_KILL, 1.0)
+					if randf() < POWERUP_DROP_CHANCE:
 						powerups.append({ "pos": e.pos, "type": randi() % 4 })
 					enemies.remove_at(j)
-					score_points += 250
+					score_points += SCORE_PER_KILL
 				break
 		if hit:
 			player_bullets.remove_at(i)
@@ -618,11 +637,11 @@ func _process(delta):
 				e.pos.y += e.speed * global_speed_multiplier * delta
 				if e.pos.y > 150:
 					e.ai_state = "CHARGE"
-					e.ai_timer = 1.0
+					e.charge_timer = 1.0
 			elif e.ai_state == "CHARGE":
 				e.pos.x += randf_range(-2, 2)
-				e.ai_timer -= delta
-				if e.ai_timer <= 0:
+				e.charge_timer -= delta
+				if e.charge_timer <= 0:
 					e.ai_state = "LEAVE"
 					audio_manager.play_sfx(0.5, 0.0)
 					for a in [-0.2, 0.0, 0.2]:
@@ -706,12 +725,12 @@ func _process(delta):
 			if is_instance_valid(ui_manager):
 				ui_manager.update_boss_hp(e.hp, e.max_hp)
 				
-		if e.pos.distance_to(player.position) < 15.0 and not player.is_invincible:
+		if e.pos.distance_to(player.position) < Player.HITBOX_RADIUS_BODY and not player.is_invincible:
 			spawn_explosion(player.position, Color(3.0, 0.5, 0.5), 0.8)
 			add_shake(25.0)
 			trigger_hit_stop(0.05)
 			enemies.remove_at(i)
-			player_hp -= 30.0
+			player_hp -= ENEMY_BODY_COLLISION_DAMAGE
 			flow_state = 0.0
 			if player_hp <= 0 and game_state != "GAMEOVER":
 				trigger_game_over()
@@ -724,8 +743,8 @@ func _process(delta):
 		# Gravità dinamica per i proiettili nemici
 		for bh in black_holes:
 			var d = b.pos.distance_to(bh.pos)
-			if d < 250.0:
-				var pull = (bh.pos - b.pos).normalized() * (1.0 - d/250.0) * 800.0 * delta
+			if d < BH_PULL_RADIUS:
+				var pull = (bh.pos - b.pos).normalized() * (1.0 - d/BH_PULL_RADIUS) * BH_PULL_FORCE_PROJECTILE * delta
 				b.dir = (b.dir * b.speed + pull).normalized()
 				
 		if b.has("homing") and b.homing and is_instance_valid(player):
@@ -736,19 +755,19 @@ func _process(delta):
 		
 		# Bullet Grazing!
 		var dist_to_player = b.pos.distance_to(player.position)
-		if dist_to_player < 5.0 and not player.is_invincible:
+		if dist_to_player < Player.HITBOX_RADIUS_BULLET and not player.is_invincible:
 			spawn_explosion(player.position, Color(3.0, 0.2, 0.2), 0.5)
 			add_shake(10.0)
 			trigger_hit_stop(0.02)
 			remove_enemy_bullet(i)
-			player_hp -= 15.0
+			player_hp -= ENEMY_BULLET_DAMAGE
 			flow_state = 0.0
 			if player_hp <= 0 and game_state != "GAMEOVER":
 				trigger_game_over()
-		elif dist_to_player < 35.0 and not b.has("grazed") and not player.is_invincible:
+		elif dist_to_player < GRAZE_RADIUS and not b.has("grazed") and not player.is_invincible:
 			b["grazed"] = true
-			score_points += 50
-			flow_state = min(flow_state + 0.1, 1.0)
+			score_points += SCORE_PER_GRAZE
+			flow_state = min(flow_state + FLOW_GAIN_PER_GRAZE, 1.0)
 			# Mini particle effect
 			spawn_explosion(b.pos, Color(1.0, 1.0, 1.0, 0.5), 0.2)
 			audio_manager.play_sfx(3.0, -10.0)
@@ -773,7 +792,7 @@ func _process(delta):
 		if p.pos.distance_to(player.position) < 30.0:
 			if p.type == 0:
 				audio_manager.play_sfx(2.5, 5.0)
-				player_hp = min(player_hp + 40.0, 100.0)
+				player_hp = min(player_hp + PLAYER_HEAL, PLAYER_HP_MAX)
 				spawn_explosion(player.position, Color(0.2, 3.0, 0.5), 0.5) # Verde curativo
 			elif p.type == 1:
 				audio_manager.play_sfx(3.5, 5.0)
@@ -789,7 +808,7 @@ func _process(delta):
 				audio_manager.play_sfx(0.1, 10.0)
 				spawn_explosion(player.position, Color(0.0, 0.0, 0.0), 2.0)
 				add_shake(40.0)
-				black_holes.append({ "pos": p.pos, "life": 6.0 })
+				black_holes.append({ "pos": p.pos, "life": BH_LIFE })
 			powerups.remove_at(i)
 		elif p.pos.y > screen_size.y + 100:
 			powerups.remove_at(i)
@@ -811,10 +830,10 @@ func _process(delta):
 						trigger_hit_stop(0.05)
 						audio_manager.play_sfx(1.5, -5.0)
 						spawn_explosion(e.pos, Color(3.0, 1.0, 0.2), 1.0)
-						flow_state = min(flow_state + 0.05, 1.0)
-						if randf() > 0.8: powerups.append({ "pos": e.pos, "type": randi() % 4 })
+						flow_state = min(flow_state + FLOW_GAIN_PER_KILL, 1.0)
+						if randf() < POWERUP_DROP_CHANCE: powerups.append({ "pos": e.pos, "type": randi() % 4 })
 						enemies.remove_at(j)
-						score_points += 250
+						score_points += SCORE_PER_KILL
 						
 	# BLACK HOLES (Gravity and Absorption)
 	for i in range(black_holes.size() - 1, -1, -1):
@@ -826,12 +845,12 @@ func _process(delta):
 			var pull_force = 400.0 * min(bh.life, 1.0)
 			for e in enemies:
 				var dist = e.pos.distance_to(bh.pos)
-				if dist < 500.0: e.pos = e.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 200.0 * delta)
-				if dist < 20.0: e.hp -= 100
+				if dist < BH_GRAVITY_RADIUS: e.pos = e.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 200.0 * delta)
+				if dist < BH_ABSORB_RADIUS: e.hp -= 100
 			for b in active_enemy_bullets:
 				var dist = b.pos.distance_to(bh.pos)
-				if dist < 500.0: b.pos = b.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 300.0 * delta)
-				if dist < 20.0: b.pos.y = 9999
+				if dist < BH_GRAVITY_RADIUS: b.pos = b.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 300.0 * delta)
+				if dist < BH_ABSORB_RADIUS: b.pos.y = 9999
 				
 	if pp_rect and pp_rect.material:
 		pp_rect.material.set_shader_parameter("flow_state", flow_state)

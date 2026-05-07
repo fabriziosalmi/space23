@@ -21,19 +21,23 @@ jobs:
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
-      
+        with:
+          # I binari (MP3, screenshot.png) sono in Git LFS dopo `git lfs migrate import`.
+          # `lfs: true` fa sì che il checkout faccia anche il pull dei pointer.
+          lfs: true
+
       - name: Setup Godot
         uses: chickensoft-games/setup-godot@v2
         with:
-          version: "4.3.0"
+          version: "4.4.1"
           use-dotnet: false
 
       - name: Download Godot Export Templates Manually
         run: |
-          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
-          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz -O templates.zip
+          mkdir -p ~/.local/share/godot/export_templates/4.4.1.stable
+          wget -q https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz -O templates.zip
           unzip -q templates.zip
-          mv templates/* ~/.local/share/godot/export_templates/4.3.stable/
+          mv templates/* ~/.local/share/godot/export_templates/4.4.1.stable/
           rm -rf templates templates.zip
 
       - name: Create export_presets.cfg

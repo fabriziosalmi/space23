@@ -1,6 +1,10 @@
 extends Node2D
 class_name BackgroundRenderer
 
+# Quanto la cassa (audio_low) accelera lo scroll del parallasse.
+# 0.0 = nessun effetto, 2.5 = a beat pieno (audio_bass≈1.0) lo scroll è 3.5x.
+const KICK_PARALLAX_BOOST: float = 2.5
+
 var layer_deep = []
 var layer_mid = []
 var layer_near = []
@@ -21,59 +25,7 @@ func _ready():
 	nebula_bg.position = Vector2(-200, -200)
 	nebula_bg.show_behind_parent = true
 	var mat = ShaderMaterial.new()
-	var shader = Shader.new()
-	shader.code = """
-	shader_type canvas_item;
-	uniform vec3 c_bg = vec3(0.005, 0.0, 0.015);
-	uniform vec3 c_neb1 = vec3(0.05, 0.01, 0.1);
-	uniform vec3 c_neb2 = vec3(0.0, 0.05, 0.15);
-	uniform float scroll_time = 0.0;
-	uniform float audio_bass = 0.0;
-	
-	// Funzione Noise procedurale
-	vec2 random2(vec2 p) {
-		return fract(sin(vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))))*43758.5453);
-	}
-	float noise(vec2 p) {
-		vec2 i = floor(p);
-		vec2 f = fract(p);
-		vec2 u = f*f*(3.0-2.0*f);
-		return mix( mix( dot( random2(i + vec2(0.0,0.0) ), f - vec2(0.0,0.0) ), 
-						 dot( random2(i + vec2(1.0,0.0) ), f - vec2(1.0,0.0) ), u.x),
-					mix( dot( random2(i + vec2(0.0,1.0) ), f - vec2(0.0,1.0) ), 
-						 dot( random2(i + vec2(1.0,1.0) ), f - vec2(1.0,1.0) ), u.x), u.y);
-	}
-	// FBM (Fractal Brownian Motion)
-	float fbm(vec2 p) {
-		float f = 0.0;
-		float w = 0.5;
-		for (int i=0; i<5; i++) {
-			f += w * noise(p);
-			p *= 2.0;
-			w *= 0.5;
-		}
-		return f;
-	}
-	
-	void fragment() {
-		vec2 uv = UV;
-		uv.y += scroll_time * 0.05;
-		
-		float n1 = fbm(uv * 3.0 + vec2(scroll_time * 0.02, scroll_time * 0.05));
-		float n2 = fbm(uv * 6.0 - vec2(scroll_time * 0.01, scroll_time * 0.03));
-		
-		vec3 color = c_bg;
-		color = mix(color, c_neb1, smoothstep(0.1, 0.8, n1));
-		color = mix(color, c_neb2, smoothstep(0.2, 0.9, n2));
-		
-		float strobe = audio_bass * 8.0; 
-		color += c_neb1 * n1 * strobe;
-		color += c_neb2 * n2 * strobe * 0.5;
-		
-		COLOR = vec4(color, 1.0);
-	}
-	"""
-	mat.shader = shader
+	mat.shader = preload("res://shaders/nebula.gdshader")
 	nebula_bg.material = mat
 	add_child(nebula_bg)
 	
@@ -174,35 +126,38 @@ func _init_layers():
 		})
 
 func update_background(delta: float, global_speed_multiplier: float, c_bg: Color, c_neb1: Color, c_neb2: Color, audio_bass: float, audio_mid: float):
-	nebula_time += delta * global_speed_multiplier
+	# Cassa = boost momentaneo dello scroll. Pulsa con la traccia.
+	var effective_speed: float = global_speed_multiplier + audio_bass * KICK_PARALLAX_BOOST
+
+	nebula_time += delta * effective_speed
 	if nebula_bg and nebula_bg.material:
 		nebula_bg.material.set_shader_parameter("scroll_time", nebula_time)
 		nebula_bg.material.set_shader_parameter("audio_bass", audio_bass)
 		nebula_bg.material.set_shader_parameter("c_bg", Vector3(c_bg.r, c_bg.g, c_bg.b))
 		nebula_bg.material.set_shader_parameter("c_neb1", Vector3(c_neb1.r, c_neb1.g, c_neb1.b))
 		nebula_bg.material.set_shader_parameter("c_neb2", Vector3(c_neb2.r, c_neb2.g, c_neb2.b))
-	
+
 	# Scroll
 	var all_layers = [layer_deep, layer_mid, layer_near, layer_top]
 	for layer in all_layers:
 		for e in layer:
 			if e.has("dir"): # E' una cometa
-				e.pos += e.dir * e.speed * global_speed_multiplier * delta
+				e.pos += e.dir * e.speed * effective_speed * delta
 				if e.pos.y > screen_size.y + 200 or e.pos.x < -200 or e.pos.x > screen_size.x + 200:
 					e.pos.y = -200
 					e.pos.x = randf_range(-200, screen_size.x + 200)
 			else:
-				e.pos.y += e.speed * global_speed_multiplier * delta
+				e.pos.y += e.speed * effective_speed * delta
 				if e.pos.y > screen_size.y + 150:
 					e.pos.y = -150
 					e.pos.x = randf_range(-200, screen_size.x + 200)
-					
+
 			if e.has("rot"): # E' un asteroide
-				e.rot += e.rot_speed * global_speed_multiplier * delta
-				
+				e.rot += e.rot_speed * effective_speed * delta
+
 			if e.has("asteroids"): # E' un gruppo di asteroidi
 				for ast in e.asteroids:
-					ast.rot += ast.rot_speed * global_speed_multiplier * delta
+					ast.rot += ast.rot_speed * effective_speed * delta
 					
 	# Pass audio_mid to draw
 	# We can store it as meta or just call queue_redraw() and use a property
