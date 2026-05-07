@@ -556,8 +556,8 @@ func add_shake(amount: float):
 
 func play_sfx(pitch: float, volume: float = 0.0):
 	for p in sfx_players:
-		if not p.playing:
-			p.stream = playlist[current_track_idx].stream # Usa la traccia come generatore
+		if not p.playing and audio_stream_player.stream != null:
+			p.stream = audio_stream_player.stream # Usa la traccia in esecuzione come generatore
 			p.pitch_scale = pitch
 			p.volume_db = volume
 			p.play(randf_range(10.0, 20.0))
