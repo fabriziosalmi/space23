@@ -135,6 +135,7 @@ func _ready():
 		hitbox_node.draw_circle(Vector2.ZERO, 2.5, Color(1.0, 1.0, 1.0, 1.0))
 	)
 	hitbox_node.z_index = 10
+	hitbox_node.name = "HitboxVisualizer"
 	add_child(hitbox_node)
 	
 	# --- PROCEDURAL TRAIL ---
@@ -209,7 +210,7 @@ func _process(delta):
 		if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A): input_dir.x -= 1
 		if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D): input_dir.x += 1
 		
-		shoot_timer -= engine_delta
+		shoot_timer -= delta
 		if Input.is_key_pressed(KEY_SPACE) and shoot_timer <= 0:
 			if weapon_type == 1:
 				shoot_timer = 0.5 # Railgun rate
@@ -273,7 +274,7 @@ func _process(delta):
 		var speed_ratio = velocity.length() / max_speed
 		var bob = sin(time_passed * 6.0) * 10.0 * (1.0 - speed_ratio)
 		sprite.position.y = bob
-		
+		$HitboxVisualizer.position.y = bob
 		# Stretching basato sull'accelerazione
 		var base_scale = 0.18
 		var target_scale_y = base_scale
