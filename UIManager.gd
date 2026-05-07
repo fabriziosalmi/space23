@@ -53,7 +53,7 @@ func _ready():
 	if vfile:
 		game_version = vfile.get_as_text().strip_edges()
 		
-	title_label.text = "S P A C E 2 3\n\nPRESS ENTER TO START\n\n" + game_version
+	title_label.text = "S P A C E 2 3\n\nTAP OR PRESS ANY KEY TO START\n\n" + game_version
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.add_theme_font_override("font", arcade_font)
 	title_label.add_theme_font_size_override("font_size", 52)
@@ -161,7 +161,7 @@ func _process(delta):
 		title_label.add_theme_color_override("font_color", Color(1.0, 0.2 + pulse * 0.6, 0.6 + pulse * 0.4))
 
 func _input(event):
-	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton):
+	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch):
 		if event.is_pressed() and not event.is_echo():
 			title_label.text = "S P A C E 2 3\n\nPRESS ANY KEY TO START\n\n" + title_label.text.split("\n\n")[-1] # Fallback just in case
 			title_label.hide()

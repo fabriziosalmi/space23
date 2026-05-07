@@ -210,8 +210,14 @@ func _process(delta):
 		if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A): input_dir.x -= 1
 		if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D): input_dir.x += 1
 		
+		var is_touching = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		if is_touching:
+			var target_pos = get_global_mouse_position()
+			if position.distance_to(target_pos) > 15.0:
+				input_dir += (target_pos - position).normalized()
+		
 		shoot_timer -= delta
-		if Input.is_key_pressed(KEY_SPACE) and shoot_timer <= 0:
+		if (Input.is_key_pressed(KEY_SPACE) or is_touching) and shoot_timer <= 0:
 			if weapon_type == 1:
 				shoot_timer = 0.5 # Railgun rate
 				if get_parent().has_method("spawn_railgun"):
