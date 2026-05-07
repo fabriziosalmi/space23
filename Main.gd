@@ -11,7 +11,9 @@ var nebula_bg: ColorRect
 # --- GAMEPLAY DATA ---
 var enemies = []
 var player_bullets = []
-var enemy_bullets = []
+var active_enemy_bullets = []
+var pool_enemy_bullets = []
+var waves_data = []
 var explosions = []
 var powerups = []
 var railguns = []
@@ -207,6 +209,14 @@ func _ready():
 	main_camera.zoom = Vector2(1.0, 1.0) 
 	add_child(main_camera)
 	
+	var file = FileAccess.open("res://waves.json", FileAccess.READ)
+	if file:
+		var json = JSON.new()
+		if json.parse(file.get_as_text()) == OK:
+			waves_data = json.get_data()
+			
+	for i in range(2500):
+		pool_enemy_bullets.append({ "pos": Vector2.ZERO, "dir": Vector2.ZERO, "speed": 0.0, "homing": false, "grazed": false })	
 	player.can_move = false
 	game_state = "TITLE"
 
@@ -279,6 +289,22 @@ func add_shake(amount: float):
 func trigger_hit_stop(duration: float):
 	hit_stop_timer = max(hit_stop_timer, duration)
 
+func spawn_enemy_bullet(pos: Vector2, dir: Vector2, speed: float, homing: bool = false):
+	if pool_enemy_bullets.size() > 0:
+		var b = pool_enemy_bullets.pop_back()
+		b.pos = pos
+		b.dir = dir
+		b.speed = speed
+		b.homing = homing
+		b.grazed = false
+		active_enemy_bullets.append(b)
+
+func remove_enemy_bullet(idx: int):
+	var b = active_enemy_bullets[idx]
+	pool_enemy_bullets.append(b)
+	active_enemy_bullets[idx] = active_enemy_bullets[active_enemy_bullets.size() - 1]
+	active_enemy_bullets.pop_back()
+
 func spawn_railgun(pos: Vector2):
 	railguns.append({ "pos": pos, "life": 0.2 })
 	audio_manager.play_sfx(0.2, 5.0)
@@ -293,9 +319,10 @@ func trigger_smart_bomb():
 	spawn_explosion(player.position, Color(10.0, 10.0, 10.0), 3.0, true)
 	
 	# Distruggi tutti i proiettili nemici
-	for b in enemy_bullets:
+	for b in active_enemy_bullets:
 		spawn_explosion(b.pos, Color(1.0, 0.5, 0.5), 0.2)
-	enemy_bullets.clear()
+		pool_enemy_bullets.append(b)
+	active_enemy_bullets.clear()
 	
 	# Danneggia o distruggi nemici
 	for i in range(enemies.size() - 1, -1, -1):
@@ -418,44 +445,40 @@ func _process(delta):
 		
 	global_speed_multiplier = lerp(global_speed_multiplier, target_speed_multiplier, 1.5 * delta)
 	
-	# --- GAME LOOP (Nemici e Armi) ---
 	if not is_intro and not audio_manager.is_transitioning:
 		wave_timer -= delta
 		if wave_timer <= 0:
 			var diff = 1.0 + (distance / 4000.0) # Difficoltà crescente
 			
-			if wave_index % 5 == 0: # V-Shape Scout
-				var cx = randf_range(200, screen_size.x - 200)
-				for w in range(5):
-					var offset_x = (w - 2) * 60
-					var offset_y = abs(w - 2) * -50
-					_spawn_enemy(0, Vector2(cx + offset_x, -100 + offset_y), diff)
-				wave_timer = randf_range(3.0, 4.0) / clamp(diff * 0.5, 1.0, 3.0)
+			if waves_data.size() > 0:
+				var w_data = waves_data[wave_index % waves_data.size()]
+				var type = w_data.get("type", "v_shape")
+				var count = w_data.get("count", 1)
+				wave_timer = w_data.get("delay", 5.0) / clamp(diff * 0.5, 1.0, 3.0)
 				
-			elif wave_index % 5 == 1: # Linea Orizzontale Fighter
-				var start_x = randf_range(100, screen_size.x - 300)
-				for w in range(4):
-					_spawn_enemy(1, Vector2(start_x + w * 90, -100), diff)
-				wave_timer = randf_range(4.0, 5.0) / clamp(diff * 0.5, 1.0, 3.0)
-				
-			elif wave_index % 5 == 2: # Tank con Missili Traccianti + Scorta
-				var cx = randf_range(200, screen_size.x - 200)
-				_spawn_enemy(2, Vector2(cx, -100), diff) # Tank
-				_spawn_enemy(0, Vector2(cx - 80, -60), diff) # Scout sx
-				_spawn_enemy(0, Vector2(cx + 80, -60), diff) # Scout dx
-				wave_timer = randf_range(5.0, 6.0) / clamp(diff * 0.5, 1.0, 3.0)
-				
-			elif wave_index % 5 == 3: # Doppio Tank Incrociato
-				_spawn_enemy(2, Vector2(screen_size.x * 0.25, -100), diff)
-				_spawn_enemy(2, Vector2(screen_size.x * 0.75, -100), diff)
-				wave_timer = randf_range(6.0, 7.0) / clamp(diff * 0.5, 1.0, 3.0)
-				
-			elif wave_index % 5 == 4: # BULLET HELL SPINNER ELITE
-				var cx = screen_size.x / 2.0
-				_spawn_enemy(3, Vector2(cx, -100), diff)
-				wave_timer = randf_range(8.0, 10.0) / clamp(diff * 0.5, 1.0, 3.0)
-				
-			wave_index += 1
+				if type == "v_shape":
+					var cx = randf_range(200, screen_size.x - 200)
+					for w in range(count):
+						var offset_x = (w - int(count/2)) * 60
+						var offset_y = abs(w - int(count/2)) * -50
+						_spawn_enemy(0, Vector2(cx + offset_x, -100 + offset_y), diff)
+				elif type == "horizontal":
+					var start_x = randf_range(100, screen_size.x - 300)
+					for w in range(count):
+						_spawn_enemy(1, Vector2(start_x + w * 90, -100), diff)
+				elif type == "tank_escort":
+					var cx = randf_range(200, screen_size.x - 200)
+					_spawn_enemy(2, Vector2(cx, -100), diff) # Tank
+					_spawn_enemy(0, Vector2(cx - 80, -60), diff) # Scout sx
+					_spawn_enemy(0, Vector2(cx + 80, -60), diff) # Scout dx
+				elif type == "double_tank":
+					_spawn_enemy(2, Vector2(screen_size.x * 0.25, -100), diff)
+					_spawn_enemy(2, Vector2(screen_size.x * 0.75, -100), diff)
+				elif type == "spinner":
+					var cx = screen_size.x / 2.0
+					_spawn_enemy(3, Vector2(cx, -100), diff)
+					
+				wave_index += 1
 			
 	for i in range(player_bullets.size() - 1, -1, -1):
 		var b = player_bullets[i]
@@ -503,7 +526,7 @@ func _process(delta):
 					audio_manager.play_sfx(0.5, 0.0)
 					for a in [-0.2, 0.0, 0.2]:
 						var dir = (player.position - e.pos).rotated(a).normalized()
-						enemy_bullets.append({ "pos": e.pos, "dir": dir, "speed": 400.0 })
+						spawn_enemy_bullet(e.pos, dir, 400.0)
 			elif e.ai_state == "LEAVE":
 				e.pos.y -= e.speed * global_speed_multiplier * delta
 				if e.pos.y < -100: e.hp = 0
@@ -520,7 +543,7 @@ func _process(delta):
 			if e.shoot_timer <= 0:
 				e.shoot_timer = randf_range(2.5, 4.0)
 				var dir = (player.position - e.pos).normalized()
-				enemy_bullets.append({ "pos": e.pos, "dir": dir, "speed": 250.0, "homing": true })
+				spawn_enemy_bullet(e.pos, dir, 250.0, true)
 		elif e.ai_type == 3: # Spinner: Bullet Hell Boss
 			if e.ai_state == "ENTER":
 				e.pos.y += e.speed * global_speed_multiplier * delta
@@ -534,14 +557,14 @@ func _process(delta):
 					e.shoot_timer = 0.08
 					var a = e.ai_timer * 6.0 # Angolo in rotazione continua
 					var dir = Vector2(cos(a), sin(a))
-					enemy_bullets.append({ "pos": e.pos, "dir": dir, "speed": 300.0, "homing": false })
+					spawn_enemy_bullet(e.pos, dir, 300.0, false)
 					var dir2 = Vector2(cos(a + PI), sin(a + PI))
-					enemy_bullets.append({ "pos": e.pos, "dir": dir2, "speed": 300.0, "homing": false })
+					spawn_enemy_bullet(e.pos, dir2, 300.0, false)
 					# Aggiungiamo anche proiettili più lenti per creare barriere
 					var dir3 = Vector2(cos(a + PI/2), sin(a + PI/2))
-					enemy_bullets.append({ "pos": e.pos, "dir": dir3, "speed": 150.0, "homing": false })
+					spawn_enemy_bullet(e.pos, dir3, 150.0, false)
 					var dir4 = Vector2(cos(a - PI/2), sin(a - PI/2))
-					enemy_bullets.append({ "pos": e.pos, "dir": dir4, "speed": 150.0, "homing": false })
+					spawn_enemy_bullet(e.pos, dir4, 150.0, false)
 			if e.pos.y > screen_size.y + 100: e.hp = 0
 			
 		if e.pos.distance_to(player.position) < 40.0 and not player.is_invincible:
@@ -556,8 +579,8 @@ func _process(delta):
 		elif e.pos.y > screen_size.y + 100:
 			enemies.remove_at(i)
 			
-	for i in range(enemy_bullets.size() - 1, -1, -1):
-		var b = enemy_bullets[i]
+	for i in range(active_enemy_bullets.size() - 1, -1, -1):
+		var b = active_enemy_bullets[i]
 		if b.has("homing") and b.homing and is_instance_valid(player):
 			var desired_dir = (player.position - b.pos).normalized()
 			b.dir = b.dir.lerp(desired_dir, 1.2 * delta).normalized()
@@ -570,7 +593,7 @@ func _process(delta):
 			spawn_explosion(player.position, Color(3.0, 0.2, 0.2), 0.5)
 			add_shake(10.0)
 			trigger_hit_stop(0.02)
-			enemy_bullets.remove_at(i)
+			remove_enemy_bullet(i)
 			player_hp -= 15.0
 			flow_state = 0.0
 			if player_hp <= 0 and game_state != "GAMEOVER":
@@ -583,7 +606,7 @@ func _process(delta):
 			spawn_explosion(b.pos, Color(1.0, 1.0, 1.0, 0.5), 0.2)
 			audio_manager.play_sfx(3.0, -10.0)
 		elif b.pos.y > screen_size.y + 100 or b.pos.x < -100 or b.pos.x > screen_size.x + 100:
-			enemy_bullets.remove_at(i)
+			remove_enemy_bullet(i)
 			
 	for i in range(explosions.size() - 1, -1, -1):
 		var ex = explosions[i]
@@ -658,7 +681,7 @@ func _process(delta):
 				var dist = e.pos.distance_to(bh.pos)
 				if dist < 500.0: e.pos = e.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 200.0 * delta)
 				if dist < 20.0: e.hp -= 100
-			for b in enemy_bullets:
+			for b in active_enemy_bullets:
 				var dist = b.pos.distance_to(bh.pos)
 				if dist < 500.0: b.pos = b.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 300.0 * delta)
 				if dist < 20.0: b.pos.y = 9999
@@ -741,8 +764,11 @@ func _draw():
 		draw_arc(bh.pos, 25.0 + sin(time * 20.0)*5.0, 0, PI*2, 32, Color(2.0, 0.5, 3.0, alpha), 3.0, true)
 		draw_arc(bh.pos, 35.0 + cos(time * 15.0)*10.0, 0, PI*2, 32, Color(4.0, 1.0, 1.0, alpha*0.5), 1.0, true)
 		
-	for b in enemy_bullets:
-		draw_circle(b.pos, 5.0, Color(2.5, 0.8, 0.2))
+	for b in active_enemy_bullets:
+		var col = Color(2.5, 0.8, 0.2)
+		if b.has("homing") and b.homing:
+			col = Color(1.0, 0.2, 1.0) # Homing missiles in pink!
+		draw_circle(b.pos, 5.0, col)
 		draw_circle(b.pos, 2.0, Color(4.0, 2.0, 1.0))
 		
 	for ex in explosions:
