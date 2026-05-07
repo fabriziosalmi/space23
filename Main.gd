@@ -591,6 +591,9 @@ func _process(delta):
 	current_c_neb2 = current_c_neb2.lerp(target_c_neb2, 0.8 * delta)
 	
 	# --- AUDIO REACTIVE ---
+	if audio_manager.audio_low > 0.75:
+		add_shake(audio_manager.audio_low * 3.0)
+		
 	# Ripristina glow fisso a 1.8 per non impattare su tutto
 	if world_env and world_env.environment:
 		world_env.environment.glow_intensity = 1.8
@@ -618,9 +621,10 @@ func _draw():
 		var c_arr = PackedColorArray()
 		c_arr.resize(e.pts.size())
 		c_arr.fill(draw_color)
-		draw_set_transform(e.pos, 0.0, Vector2.ONE)
+		var beat_scale = 1.0 + (audio_manager.audio_low * 0.3)
+		draw_set_transform(e.pos, 0.0, Vector2(beat_scale, beat_scale))
 		draw_polygon(e.pts, c_arr)
-		draw_circle(Vector2(0,0), 6.0, Color(2.5, 0.5, 0.5)) # Core glow
+		draw_circle(Vector2(0,0), 6.0, Color(2.5 + audio_manager.audio_low * 2.0, 0.5, 0.5)) # Core glow
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		
 	for p in powerups:

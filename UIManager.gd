@@ -105,6 +105,7 @@ func _ready():
 	name_input.custom_minimum_size = Vector2(300, 50)
 	name_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_input.placeholder_text = "ENTER PILOT NAME"
+	name_input.max_length = 8
 	name_input.add_theme_font_override("font", arcade_font)
 	name_input.add_theme_font_size_override("font_size", 16)
 	name_input.text_submitted.connect(_on_name_submitted)
@@ -139,7 +140,8 @@ func _input(event):
 		start_pressed.emit()
 
 func _on_name_submitted(new_text: String):
-	if new_text.strip_edges() == "":
+	new_text = new_text.strip_edges().to_upper()
+	if new_text == "":
 		new_text = "ANON"
 	name_input.hide()
 	save_highscore(new_text, current_final_score)
