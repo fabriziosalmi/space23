@@ -8,6 +8,7 @@ class_name BlackHoleSystem
 var black_holes: Array = []
 
 # Refs (settate da Main in _ready)
+var main: Node                   # Main, per centralizzare gli FX di kill
 var enemy_system: EnemySystem
 var projectile_system: Node  # ProjectileSystem (forward ref)
 
@@ -25,12 +26,21 @@ func tick(delta: float) -> void:
 		var pull_force: float = 400.0 * min(bh.life, 1.0)
 
 		if enemy_system:
-			for e in enemy_system.enemies:
+			# Reverse iter: absorb damage that brings hp ≤ 0 must remove the
+			# enemy in-place with the proper kill FX. Without this path, the
+			# enemy would just be silently culled by EnemySystem's hp ≤ 0
+			# cleanup branch on the next frame — no score, no SFX, no boss
+			# lensing if the absorbed enemy was the boss.
+			for ei in range(enemy_system.enemies.size() - 1, -1, -1):
+				var e: Dictionary = enemy_system.enemies[ei]
 				var dist: float = e.pos.distance_to(bh.pos)
 				if dist < Main.BH_GRAVITY_RADIUS:
 					e.pos = e.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 200.0 * delta)
 				if dist < Main.BH_ABSORB_RADIUS:
 					e.hp -= 100
+					if e.hp <= 0 and main:
+						main.handle_enemy_kill(e)
+						enemy_system.enemies.remove_at(ei)
 
 		if projectile_system:
 			for b in projectile_system.active_enemy_bullets:

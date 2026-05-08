@@ -169,40 +169,12 @@ func _tick_enemy_bullets(delta: float, gsm: float, black_holes: Array) -> void:
 		elif b.pos.y > screen_size.y + 100 or b.pos.x < -100 or b.pos.x > screen_size.x + 100:
 			_remove_enemy_bullet_at(i)
 
-# Side effects condivisi del kill (boss vs normale).
-# Hit-stop scalato per "massa" (max_hp del nemico, che già scala con difficulty).
-# I peso-piuma scompaiono senza freeze, i bestioni sentono peso. Il boss freezea
-# 1.2s (era 2.0 — troppo lungo, rompeva il flow su replay).
+# Kill side-effect (FX, score, hit-stop) lives in Main.handle_enemy_kill — same
+# logic now reused by RailgunSystem and BlackHoleSystem so a boss killed by any
+# damage source gets the dramatic finish.
 func _kill_enemy_at(j: int, e: Dictionary) -> void:
-	if e.ai_type == Main.BOSS_TYPE_INDEX:
-		if is_instance_valid(main.ui_manager):
-			main.ui_manager.update_boss_hp(0, 100)
-		main.add_score(Main.SCORE_PER_BOSS)
-		explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 3.0, true)
-		audio_manager.play_sfx(0.2, 10.0, e.pos)  # boss kill: pan dalla pos del boss
-		main.add_shake(100.0)
-		main.trigger_hit_stop(1.2)
-		main.trigger_boss_lens(e.pos)
-	else:
-		explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 1.0)
-		# Hit-stop bracket su base_hp (pre-difficulty), così uno scout resta
-		# scout-class anche a diff 4. Buckets calibrati sui base_hp dei tipi:
-		# 2-4 (scout/squid)=0.02; 5-10 (fighter/crab/octopus/mantis/sentinel)=0.04;
-		# 12-30 (tank/dread/spinner)=0.07.
-		var bhp: int = int(e.get("base_hp", e.get("max_hp", 1)))
-		var stop_dur: float
-		if bhp <= 4:
-			stop_dur = 0.02
-		elif bhp <= 10:
-			stop_dur = 0.04
-		else:
-			stop_dur = 0.07
-		main.trigger_hit_stop(stop_dur)
-
-	main.gain_flow(Main.FLOW_GAIN_PER_KILL)
-	main.try_drop_powerup(e.pos)
+	main.handle_enemy_kill(e)
 	enemy_system.enemies.remove_at(j)
-	main.add_score(Main.SCORE_PER_KILL)
 
 # ========== RENDER ==========
 

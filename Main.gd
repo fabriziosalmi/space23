@@ -268,6 +268,7 @@ func _ready() -> void:
 	railgun_system.enemy_system = enemy_system
 	railgun_system.explosion_system = explosion_system
 
+	bh_system.main = self
 	bh_system.enemy_system = enemy_system
 	bh_system.projectile_system = projectile_system
 
@@ -466,6 +467,48 @@ func gain_flow(amount: float) -> void:
 func try_drop_powerup(pos: Vector2) -> void:
 	if randf() < POWERUP_DROP_CHANCE:
 		powerup_system.spawn(pos, randi() % 4)
+
+func handle_enemy_kill(e: Dictionary) -> void:
+	# Centralised kill FX + scoring. Called by every system that can bring an
+	# enemy's HP to 0 — player bullets (ProjectileSystem), railgun beam
+	# (RailgunSystem), black-hole absorption (BlackHoleSystem). The caller is
+	# responsible for removing the enemy from the enemies array (it has the
+	# index; we don't). Centralising here fixes two bugs from before:
+	#   - boss killed by railgun got no boss FX (no lensing, +250 score
+	#     instead of +5250, 0.05s hit-stop instead of 1.2s)
+	#   - boss/anything killed by BH absorb was silently removed by
+	#     EnemySystem's hp<=0 cleanup → no score, no SFX, no FX at all
+	# Boss kill is the dramatic finish (super explosion, lens warp, +5000
+	# score). Normal kill gets hit-stop bracketed by base_hp so a "scout-class"
+	# kill stays scout-class even at diff 4.
+	if e.ai_type == BOSS_TYPE_INDEX:
+		if is_instance_valid(ui_manager):
+			ui_manager.update_boss_hp(0, 100)
+		add_score(SCORE_PER_BOSS)
+		explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 3.0, true)
+		audio_manager.play_sfx(0.2, 10.0, e.pos)  # boss kill: pan dalla pos del boss
+		add_shake(100.0)
+		trigger_hit_stop(1.2)
+		trigger_boss_lens(e.pos)
+	else:
+		explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 1.0)
+		# Hit-stop bracket su base_hp (pre-difficulty), così uno scout resta
+		# scout-class anche a diff 4. Buckets calibrati sui base_hp dei tipi:
+		# 2-4 (scout/squid)=0.02; 5-10 (fighter/crab/octopus/mantis/sentinel)=0.04;
+		# 12-30 (tank/dread/spinner)=0.07.
+		var bhp: int = int(e.get("base_hp", e.get("max_hp", 1)))
+		var stop_dur: float
+		if bhp <= 4:
+			stop_dur = 0.02
+		elif bhp <= 10:
+			stop_dur = 0.04
+		else:
+			stop_dur = 0.07
+		trigger_hit_stop(stop_dur)
+
+	gain_flow(FLOW_GAIN_PER_KILL)
+	try_drop_powerup(e.pos)
+	add_score(SCORE_PER_KILL)
 
 func damage_player(amount: float) -> void:
 	# Guard: se i-frame ancora attivi, ignoriamo il danno. Necessario perché

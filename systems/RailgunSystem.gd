@@ -47,14 +47,14 @@ func clear() -> void:
 	queue_redraw()
 
 func _kill_enemy(j: int, e: Dictionary) -> void:
-	# Railgun kill ha sempre micro hit-stop e suono dedicato.
-	main.trigger_hit_stop(0.05)
+	# Kill FX/score centralized in Main.handle_enemy_kill: boss killed via
+	# railgun now gets the same dramatic treatment (lensing, big shake, +5000
+	# score, 1.2s freeze) instead of the previous silent-ish 0.05s + 250 score
+	# bug. We layer the railgun-flavor kill SFX on top so the "high-pitch zap"
+	# cue specific to railgun kills survives the refactor.
+	main.handle_enemy_kill(e)
 	audio_manager.play_sfx(1.5, -5.0, e.pos)
-	explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 1.0)
-	main.gain_flow(Main.FLOW_GAIN_PER_KILL)
-	main.try_drop_powerup(e.pos)
 	enemy_system.enemies.remove_at(j)
-	main.add_score(Main.SCORE_PER_KILL)
 
 func _draw() -> void:
 	for r in railguns:
