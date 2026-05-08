@@ -2,6 +2,13 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.13] - 2026-05-08
+
+### Fixed
+- **iOS WebKit: audio + page-reload-on-tap.** User reported on iPhone 16 (Safari, Firefox, Chrome — all WebKit per App Store policy) that audio was completely silent and the page reloaded itself after a few taps. Two distinct iOS WebKit issues, fixed in tandem.
+  - **Audio prime** added to `audio-fix.js`. The existing `AudioContext.resume()` was correct on desktop / Android but not sufficient on iOS WebKit, which requires a buffer source to actually start *inside the original user gesture handler* (not in a `.then()` callback, which runs async after the gesture has been consumed). New `primeContext()` queues a 1-sample silent buffer synchronously on the first user gesture; iOS registers it as "audio is playing" and unlocks the pipeline for all subsequent sources. Idempotent via `WeakSet`. No-op on platforms where `resume()` alone already worked.
+  - **Viewport meta + iOS-specific CSS** added to `deploy.yml` `html/head_include`. The "page reloads after a few taps" symptom was iOS Safari's double-tap-zoom firing → canvas resize → WebGL context loss in the Compatibility renderer with HDR-2D float framebuffers → engine restart, perceived by the user as a refresh. Fix: explicit `<meta viewport>` with `maximum-scale=1, user-scalable=no, viewport-fit=cover` (kills double-tap zoom, lets the canvas extend under the iPhone notch) plus CSS with `touch-action: manipulation` on body / `none` on canvas (kills the 300 ms tap-delay and any default gesture Safari would hijack), `-webkit-touch-callout: none` (kills the long-press selection menu that interrupts rapid tap input), `position: fixed` on body (kills the rubber-band scroll under the canvas). All no-op on desktop browsers.
+
 ## [0.1.12] - 2026-05-08
 
 ### Fixed
