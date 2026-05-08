@@ -12,6 +12,7 @@ var dist_label: Label
 var kill_label: Label
 var hp_bar: ProgressBar
 var title_label: Label
+var version_label: Label  # piccolo, basso-destra, visibile solo durante TITLE
 var leaderboard_label: Label
 var flow_label: Label
 var bomb_label: Label
@@ -57,15 +58,15 @@ func _ready():
 	add_child(hp_bar)
 	
 	title_label = Label.new()
-	
+
 	var game_version = "v0.1.0"
 	var vfile = FileAccess.open("res://version.txt", FileAccess.READ)
 	if vfile:
 		game_version = vfile.get_as_text().strip_edges()
-		
+
 	# Testo accorciato + box piu' largo: "TAP OR PRESS ANY KEY TO START" col font
 	# PressStart2P a size 52 superava i 1000px del box → veniva clippato a destra.
-	title_label.text = "S P A C E 2 3\n\nPRESS ANY KEY  /  TAP\n\n" + game_version
+	title_label.text = "S P A C E 2 3\n\nPRESS ANY KEY  /  TAP"
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title_label.add_theme_font_override("font", arcade_font)
@@ -79,6 +80,23 @@ func _ready():
 	title_label.position = Vector2(20, screen_size.y / 2.0 - 220)
 	title_label.size = Vector2(screen_size.x - 40, 420)
 	add_child(title_label)
+
+	# Versione + credit, piccolo angolo basso-destra. Stesso font arcade, alpha
+	# basso per restare unobtrusive. Mostrato solo durante TITLE (hide insieme
+	# al title_label nell'_input handler), il bottom-right durante gameplay è
+	# occupato dal bomb_button.
+	version_label = Label.new()
+	version_label.text = game_version + "  ·  MADE BY FAB23"
+	version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	version_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	version_label.add_theme_font_override("font", arcade_font)
+	version_label.add_theme_font_size_override("font_size", 12)
+	version_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.6, 0.55))
+	version_label.add_theme_color_override("font_outline_color", Color(0.2, 0.0, 0.4, 0.55))
+	version_label.add_theme_constant_override("outline_size", 4)
+	version_label.position = Vector2(0, screen_size.y - 28)
+	version_label.size = Vector2(screen_size.x - 14, 20)
+	add_child(version_label)
 	
 	leaderboard_label = Label.new()
 	leaderboard_label.position = Vector2(screen_size.x / 2.0 - 200, screen_size.y / 2.0 + 80)
@@ -279,6 +297,7 @@ func _input(event):
 		if not event.is_pressed() and not event.is_echo():
 			title_label.hide()
 			leaderboard_label.hide()
+			if version_label: version_label.hide()
 			_show_play_ui()
 			start_pressed.emit()
 

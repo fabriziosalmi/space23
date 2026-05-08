@@ -36,6 +36,10 @@ var ship_renderer: Node2D            # Node2D dedicato al disegno procedurale de
 var ship_bob: float = 0.0            # Hovering verticale (smoothato in _process)
 var ship_scale_y: float = 1.0        # Stretching verticale in base all'accelerazione
 var flame_mat: ShaderMaterial
+# I 3 ColorRect dei motori. Stash come array così possiamo applicargli lo stesso
+# bob di ship_renderer e tenere ugelli + corpo "agganciati" durante l'hover.
+var flames: Array = []
+var flame_base_y: Array = []         # y locale di partenza di ogni fiamma (per bob delta)
 
 var is_dashing = false
 var dash_timer = 0.0
@@ -64,24 +68,30 @@ func _ready():
 	flame_mat = ShaderMaterial.new()
 	flame_mat.shader = preload("res://shaders/flame.gdshader")
 	
-	# Crea 3 motori posizionati "dietro" lo sprite (essendo aggiunti prima)
+	# Crea 3 motori posizionati "dietro" lo sprite (essendo aggiunti prima).
+	# Restano sibling di ship_renderer (z-order: motori → corpo nave sopra) ma
+	# li tracciamo in `flames` per applicargli lo stesso ship_bob — altrimenti
+	# corpo che fluttua + ugelli fissi = effetto "respiro asimmetrico".
 	var flame_c = ColorRect.new()
 	flame_c.size = Vector2(30, 100)
 	flame_c.position = Vector2(-15, 25) # Motore centrale
 	flame_c.material = flame_mat
 	add_child(flame_c)
-	
+	flames.append(flame_c); flame_base_y.append(flame_c.position.y)
+
 	var flame_l = ColorRect.new()
 	flame_l.size = Vector2(16, 70)
 	flame_l.position = Vector2(-28, 20) # Motore sinistro (più vicino al centro)
 	flame_l.material = flame_mat
 	add_child(flame_l)
-	
+	flames.append(flame_l); flame_base_y.append(flame_l.position.y)
+
 	var flame_r = ColorRect.new()
 	flame_r.size = Vector2(16, 70)
 	flame_r.position = Vector2(12, 20) # Motore destro (più vicino al centro)
 	flame_r.material = flame_mat
 	add_child(flame_r)
+	flames.append(flame_r); flame_base_y.append(flame_r.position.y)
 
 	# --- NAVE PROCEDURALE ---
 	# Aggiunto DOPO i flame, così l'attaccatura dei motori è coperta dal corpo nave.
@@ -357,6 +367,12 @@ func _process(delta):
 		ship_renderer.position.y = ship_bob
 		ship_renderer.scale.y = ship_scale_y
 		ship_renderer.queue_redraw()
+
+	# Applica lo stesso bob ai motori (siblings di ship_renderer, non figli):
+	# senza questo, il corpo fluttua su/giù mentre gli ugelli restano fermi e
+	# si vede una desincronizzazione fastidiosa.
+	for i in flames.size():
+		flames[i].position.y = flame_base_y[i] + ship_bob
 
 	# Aggiorna l'intensità del fuoco nel material
 	if flame_mat:
