@@ -119,7 +119,7 @@ func _process(delta):
 		# Beat phase in cycles: 130 BPM = 2.17 beats/sec
 		var beat: float = t * 2.17
 		# Sharp bass kick: pow makes the pulse spiky instead of sinusoidal
-		var b_phase: float = fract(beat)
+		var b_phase: float = fmod(beat, 1.0)
 		synth_low = pow(1.0 - b_phase, 3.0) * 0.7  # decays from 0.7 to 0
 		# Mid: slower rolling 8th-note pulse
 		synth_mid = (0.5 + 0.5 * sin(beat * 12.566)) * 0.45
