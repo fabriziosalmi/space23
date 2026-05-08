@@ -61,21 +61,25 @@ float hash21(vec2 p) {
 //   core_radius : dimensione "punto" stella nella cella
 //   twinkle_hz  : frequenza twinkle in cicli/sec
 vec3 starfield_layer(vec2 uv, float density, float appear_thr, float core_radius, float twinkle_hz) {
+	// Single-return path (WebGL 2 / GLSL ES 3 driver-safe: alcuni driver
+	// hanno problemi con early-return in fragment shader, soprattutto se
+	// seguiti da texture sampling). Visibility = step() · core, moltiplica
+	// invece di branchare.
 	vec2 cell = floor(uv * density);
 	float h = hash21(cell);
-	if (h < appear_thr) return vec3(0.0);
+	float visible = step(appear_thr, h);
 
 	vec2 cell_uv = fract(uv * density);
 	vec2 jitter = vec2(hash21(cell + 1.7), hash21(cell + 7.3)) * 0.7 + 0.15;
 	float d = length(cell_uv - jitter);
 	float core = smoothstep(core_radius, 0.0, d);
-	if (core <= 0.0) return vec3(0.0);
 
-	// Twinkle per-stella (phase = h * 6.28). 0.45-1.0 amp così non spengono mai.
+	// Twinkle per-stella (phase = h * 31.4). 0.45-1.0 amp così non spengono mai.
 	float phase = h * 31.4;
 	float twinkle = 0.45 + 0.55 * (0.5 + 0.5 * sin(scroll_time * twinkle_hz + phase));
 
-	// Tinta variata per stella: white / pale-blue / pale-yellow / pale-pink
+	// Tinta variata per stella: white / pale-blue / pale-yellow / pale-pink.
+	// La cascata if/else senza early-return è OK in qualsiasi GLSL.
 	float color_seed = hash21(cell + 13.7);
 	vec3 tint;
 	if      (color_seed < 0.55) tint = vec3(1.00, 0.98, 0.95);  // white-warm (most common)
@@ -83,7 +87,7 @@ vec3 starfield_layer(vec2 uv, float density, float appear_thr, float core_radius
 	else if (color_seed < 0.93) tint = vec3(1.00, 0.95, 0.78);  // pale yellow
 	else                         tint = vec3(1.00, 0.82, 0.95); // pink
 
-	return tint * core * twinkle;
+	return tint * core * twinkle * visible;
 }
 
 void fragment() {

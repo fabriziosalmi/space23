@@ -91,22 +91,24 @@ void fragment() {
 		// Driven by add_shake → shake_intensity → radial_blur. So every existing
 		// add_shake call site (kill, hit, bomb, drop) gets the blur for free,
 		// while the camera's physical shake is now small and gentle.
+		// NOTE: il loop di sample è SEMPRE eseguito (non gated da `mask > 0`)
+		// per evitare WebGL non-uniform-control-flow issues con texture()
+		// derivatives. Quando mask=0, s_uv = uv → sample = current pixel,
+		// e mix(color, rb, 0) tiene color invariato. Cost trascurabile.
 		if (radial_blur > 0.0) {
 			vec2 from_ship = uv - ship_uv;
 			vec2 from_ship_aspect = from_ship;
 			from_ship_aspect.x *= 1.77;  // 16:9 → make mask circular
 			float dist_ship = length(from_ship_aspect);
 			float mask = smoothstep(0.18, 0.55, dist_ship);
-			if (mask > 0.0) {
-				vec3 rb = vec3(0.0);
-				for (int i = 1; i <= 5; i++) {
-					float t = float(i) / 5.0;
-					vec2 s_uv = uv + from_ship * t * 0.045 * radial_blur * mask;
-					rb += texture(screen_tex, s_uv).rgb;
-				}
-				rb *= 0.2;
-				color = mix(color, rb, radial_blur * mask);
+			vec3 rb = vec3(0.0);
+			for (int i = 1; i <= 5; i++) {
+				float t = float(i) / 5.0;
+				vec2 s_uv = uv + from_ship * t * 0.045 * radial_blur * mask;
+				rb += texture(screen_tex, s_uv).rgb;
 			}
+			rb *= 0.2;
+			color = mix(color, rb, radial_blur * mask);
 		}
 
 		COLOR = vec4(color, 1.0);

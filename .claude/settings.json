@@ -5,7 +5,9 @@
       "Bash(git fetch *)",
       "Bash(git lfs *)",
       "Bash(curl -sL https://fabriziosalmi.github.io/space23/index.html)",
-      "Bash(curl -sLI https://fabriziosalmi.github.io/space23/audio-fix.js)"
+      "Bash(curl -sLI https://fabriziosalmi.github.io/space23/audio-fix.js)",
+      "Bash(sed -n '20,40p' systems/PowerupSystem.gd)",
+      "Bash(sed -n '1,55p' systems/BlackHoleSystem.gd)"
     ]
   }
 }

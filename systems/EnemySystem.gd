@@ -166,7 +166,15 @@ func tick(delta: float) -> void:
 			main.trigger_hit_stop(0.05)
 			enemies.remove_at(i)
 			main.damage_player(Main.ENEMY_BODY_COLLISION_DAMAGE)
-		elif e.pos.y > screen_size.y + 100:
+		elif e.pos.y > screen_size.y + 100 or e.hp <= 0 or e.pos.y < -300:
+			# Cleanup unificato:
+			# - sotto schermo (cleanup naturale per scout/invader/spinner)
+			# - hp <= 0 (es. fighter in LEAVE che si auto-segna, plus catch-all
+			#   per qualsiasi caso edge in cui un nemico è "morto" ma non
+			#   rimosso da un kill collision)
+			# - sopra schermo (fighter LEAVES verso l'alto, prima rimaneva
+			#   bloccato per sempre nell'array perché il check guardava solo
+			#   il bottom)
 			enemies.remove_at(i)
 
 	queue_redraw()
@@ -239,6 +247,10 @@ func _ai_invader(e: Dictionary, delta: float, gsm: float) -> void:
 		e.invader_dir *= -1.0
 		e.pos.y += 60.0
 		e.pos.x += e.speed * e.invader_dir * gsm * delta
+	# BUGFIX: il decremento mancava → shoot_timer congelato al valore iniziale
+	# (1.5..2.5) e gli invader non sparavano MAI dopo lo spawn. Tutte le altre
+	# AI fanno `e.shoot_timer -= delta` prima del check, qui era saltato.
+	e.shoot_timer -= delta
 	if e.shoot_timer <= 0:
 		e.shoot_timer = randf_range(1.5, 2.5)
 		projectile_system.spawn_enemy_bullet(e.pos, Vector2.DOWN, 250.0, false)
