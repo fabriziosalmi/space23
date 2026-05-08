@@ -482,6 +482,10 @@ func damage_player(amount: float) -> void:
 	player.hit_iframe_timer = player.HIT_IFRAME_DURATION
 	# Brief white-flash pulse sul body (~80ms) = feedback istantaneo "hit!"
 	player.trigger_hit_flash()
+	# Damage SFX: pitch basso (0.4) + volume medio. Suona "grave" e impatta
+	# audio l'evento più importante del gameplay (player perso HP). Pan dalla
+	# pos del player. Distinto dai SFX kill nemico (pitch 0.5/0.8).
+	audio_manager.play_sfx(0.4, 0.0, player.position)
 	if player_hp <= 0 and game_state != "GAMEOVER":
 		trigger_game_over()
 
@@ -625,8 +629,11 @@ func _process(delta: float) -> void:
 	else:
 		_tick_playing(delta)
 
-	# Tempo globale (smooth verso target)
-	global_speed_multiplier = lerp(global_speed_multiplier, target_speed_multiplier, 1.5 * delta)
+	# Tempo globale (smooth verso target). Lerp rate 4.0/s ⇒ settling ~0.5s.
+	# Prima era 1.5/s (settling 1.5s) e con clamp floor SUPERHOT 0.05 le
+	# transizioni stop↔move duravano abbastanza da percepirsi come stutter
+	# sincrono su tutti gli elementi gsm-multiplied (bullets, enemies, scroll).
+	global_speed_multiplier = lerp(global_speed_multiplier, target_speed_multiplier, 4.0 * delta)
 
 	# Boss spawn + wave director SOLO in PLAYING reale. Il vecchio gate
 	# (not is_intro and not transitioning) lasciava passare il GAMEOVER → boss
@@ -721,8 +728,11 @@ func _tick_playing(delta: float) -> void:
 			drop_event_triggered = true
 			_on_drop_event()
 
-	# SUPERHOT: time dilation legata alla velocità del player.
-	var speed_ratio: float = clamp(player.velocity.length() / player.max_speed, 0.05, 1.0)
+	# SUPERHOT: time dilation legata alla velocità del player. Floor a 0.5
+	# (prima 0.05): da fermo il mondo respira al 50%, prima andava al 5% e
+	# il 20× di slowdown si percepiva come stutter sincrono su tutti gli
+	# elementi gsm-scaled (bullets, enemies, scroll, comets).
+	var speed_ratio: float = clamp(player.velocity.length() / player.max_speed, 0.5, 1.0)
 	if player.is_dashing:
 		speed_ratio = 1.0  # Dash forza il tempo reale
 	target_speed_multiplier = base_target_speed * speed_ratio * (1.0 + flow_state * FLOW_SPEED_BONUS)

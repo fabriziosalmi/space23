@@ -2,6 +2,19 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.6] - 2026-05-08
+
+The "ship moves forward" pass: stutter loop, reversed starfields, missing player SFX, mobile portrait — all closed in one batch.
+
+### Fixed
+- **Sync-stutter loop on all gsm-multiplied elements (bullets, enemies, scroll, comets).** Root cause was *not* a frame-pacing or GC issue. The SuperHot time dilation in `Main._tick_playing` clamped `speed_ratio` at `0.05` (player still ⇒ world at 5 % speed, a 20× slowdown), then `global_speed_multiplier` lerped toward target at only 1.5/s (settling ~1.5 s). Every input cadence (release keys, press keys) drove a slow stop↔move oscillation visible across every system that scales by `gsm`. Tuned to clamp `0.5` (max ×2 dilation) and lerp 4.0/s (settling ~0.5 s). The mechanic still breathes around dash and post-drop, the loop disappears.
+- **Three background layers were scrolling in the wrong direction.** `nebula.gdshader`'s starfield 1, starfield 2 and speed-streak passes used `uv.y += scroll_time * X` on a fresh copy of `UV` — which in Godot canvas-item shaders shifts the sample position downward in the texture and makes the *visual* pattern travel **up**. The CPU layers (planets, comets, asteroids, deep landmarks) all use `pos.y += speed * delta` and travel down correctly, so the contradiction was visible: comets going down, stars going up. Inverted the three offsets to `uv.y -= scroll_time * X`. The cloud passes (n1/n2/n3) are intentionally left untouched — they're amorphous, the eye doesn't read direction on them, and they share the base `uv` whose offset is interlocked with the explicit fbm time-offsets at lines 98/99/102. Note: the speed-streak comment already said "scrollano fast verso il basso" — the implementation contradicted the documented intent.
+
+### Added
+- **Player shoot SFX.** New `Player._play_shoot_sfx()` — pitch 3.0, volume −10 dB, pan from `position` (same recipe as the graze SFX so it's distinct from kill / boss-kill / pickup / bomb sounds without competing). Called from the buffed and normal fire branches; the railgun branch is intentionally skipped because `RailgunSystem.spawn()` already emits its own SFX (would double up otherwise).
+- **Player damage SFX.** `Main.damage_player` now emits `play_sfx(0.4, 0.0, player.position)` right after `trigger_hit_flash()`. Pitch 0.4 = grave / heavy, distinct from kill SFX (0.5/0.8) and from the bomb (0.2). The most important game event was previously silent.
+- **Landscape lock on mobile web.** `display/window/handheld/orientation="landscape"` in `project.godot` (hint for native mobile exports), and a CSS-only portrait detector injected via `html/head_include` in the deploy workflow: `@media screen and (orientation: portrait) and (max-width: 1024px)` hides `#canvas`/`#status` and renders a `body::before` "Please rotate your device to landscape" overlay. Pure CSS, no JS, no Screen Orientation API (which Safari iOS won't honour anyway). Desktop browsers are untouched.
+
 ## [0.1.5] - 2026-05-08
 
 Hotfix for the boot splash on Pages and a quick warning sweep.

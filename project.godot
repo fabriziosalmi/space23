@@ -38,6 +38,10 @@ boot_splash/fullsize=true
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
+# Lock landscape: il game design è 16:9 fisso. In portrait su mobile la HUD
+# (calcolata su 1280×720) e i pattern di spawn sarebbero malformati. Hint
+# per export nativi mobile + meta nel browser via head_include.
+window/handheld/orientation="landscape"
 
 [audio]
 

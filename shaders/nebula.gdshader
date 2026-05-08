@@ -139,20 +139,26 @@ void fragment() {
 	// Density bumped + core_radius reduced: stelle più piccole (puntiformi)
 	// mantenendo lo stesso pattern e densità visiva. Era 90/0.05 e 50/0.08
 	// → user vedeva stelle "troppo grandi". Adesso 140/0.035 e 75/0.05.
+	// Direzione: `-= scroll_time` ⇒ in Godot canvas_item le UV.y crescono
+	// verso il basso, quindi sottrarre nel sample shifta il pattern visivo
+	// VERSO IL BASSO (illusione "ship moving forward"). Prima era += →
+	// stelle salivano verso l'alto, contraddicendo lo scroll dei pianeti
+	// e delle comete (che vanno giù).
 	vec2 star_uv1 = UV;
-	star_uv1.y += scroll_time * 0.04;
+	star_uv1.y -= scroll_time * 0.04;
 	color += starfield_layer(star_uv1, 140.0, 0.985, 0.035, 3.5) * (0.7 + audio_mid * 0.4);
 
 	vec2 star_uv2 = UV;
-	star_uv2.y += scroll_time * 0.10;
+	star_uv2.y -= scroll_time * 0.10;
 	color += starfield_layer(star_uv2, 75.0, 0.992, 0.05, 5.0) * 1.2 * (0.8 + audio_high * 0.5);
 
 	// --- SPEED STREAKS — sottili linee verticali "warp" che vendono velocità ---
 	// Pochissime, sottili, scrollano fast verso il basso, intensità modulata
 	// dal bass: kick → streak più visibili. "Quasi impercettibili" ma il
-	// cervello le legge come "stiamo viaggiando fast".
+	// cervello le legge come "stiamo viaggiando fast". (Stessa correzione
+	// di direzione delle starfield: `-=` per scrollare DOWN.)
 	vec2 streak_uv = UV;
-	streak_uv.y += scroll_time * 0.18;
+	streak_uv.y -= scroll_time * 0.18;
 	vec2 streak_cell = floor(streak_uv * vec2(160.0, 35.0));
 	float streak_h = hash21(streak_cell + 5.7);
 	float streak_visible = step(0.992, streak_h);

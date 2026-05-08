@@ -172,6 +172,14 @@ func _on_trail_draw():
 func trigger_hit_flash() -> void:
 	hit_flash_timer = HIT_FLASH_DURATION
 
+# SFX shoot: stesso pitch/volume del graze (3.0 / -10dB) — alto e discreto, non
+# copre la musica e si sente chiaramente sopra le esplosioni. Pan dalla pos
+# del player. Il railgun è escluso (RailgunSystem ha il suo SFX dedicato).
+func _play_shoot_sfx() -> void:
+	var pn = get_parent()
+	if pn and pn.has_method("get") and pn.get("audio_manager") != null:
+		pn.audio_manager.play_sfx(3.0, -10.0, position)
+
 # Disegna la nave proceduralmente: fusoliera + ali (con lighting L/R modulato dal
 # roll per un fake-3D), cockpit HDR audio-reattivo, trim neon che pulsa col bass,
 # luci di posizione port/starboard.
@@ -345,6 +353,7 @@ func _process(delta):
 				shoot_timer = SHOOT_RATE_RAILGUN
 				if get_parent().has_method("spawn_railgun"):
 					get_parent().spawn_railgun(position + Vector2(0, -30))
+				# Railgun SFX è già emesso da RailgunSystem.spawn() — non duplicare.
 			elif fire_buff_timer > 0.0:
 				shoot_timer = SHOOT_RATE_BUFFED  # Più veloce e 4 cannoni!
 				if get_parent().has_method("spawn_player_bullet"):
@@ -352,11 +361,13 @@ func _process(delta):
 					get_parent().spawn_player_bullet(position + Vector2(-15, -20))
 					get_parent().spawn_player_bullet(position + Vector2(15, -20))
 					get_parent().spawn_player_bullet(position + Vector2(30, -10))
+				_play_shoot_sfx()
 			else:
 				shoot_timer = SHOOT_RATE_NORMAL
 				if get_parent().has_method("spawn_player_bullet"):
 					get_parent().spawn_player_bullet(position + Vector2(-22, -10))
 					get_parent().spawn_player_bullet(position + Vector2(22, -10))
+				_play_shoot_sfx()
 	
 	if dash_cooldown > 0:
 		dash_cooldown -= engine_delta
