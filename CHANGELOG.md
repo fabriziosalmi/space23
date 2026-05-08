@@ -2,6 +2,22 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.2] - 2026-05-08
+
+### Fixed
+- **Procedural-landmark images looked pixelated and grayscale.** Body sizes overshot the source PNG resolution (Mercury source ~256 px scaled to 600 px+ → visible pixelation), and the modulate alpha was so close to gray that the planets read as monochrome. Sizes pulled back to ~380–520 px (max ~2× the PNG native), modulate now neutral white with a faint color hint instead of uniform gray.
+- **`_tick_playing` was running during GAMEOVER.** Substate dispatch was a non-exclusive chain of `if`/`if`/`elif`/`else` instead of a clean cascade, so flow_state, score, camera lerp and bomb_buffer all kept ticking on the corpse, and the wave director kept spawning enemies. Substate is now strictly mutually exclusive (`if` / `elif` / `elif` / `elif` / `else`); wave + boss gate widened to `game_state == "PLAYING"`.
+
+### Changed
+- **Audio bands now visually distinct on the nebula.** Previously bass, mid, and high all just brightened the same two palette colors (`c_neb1` / `c_neb2`); on track-0's purple/blue palette the result was "the cloud got a bit brighter", indistinguishable bands. Added band-specific additive tints on top of the palette glow:
+  - Bass → warm red/orange wash on `n1` cloud peaks
+  - Mid  → cool cyan/blue surge on `n2` cloud peaks
+  - High → pink/magenta shimmer on `n2` cloud peaks plus brighter sparkle
+  Each band paints a qualitatively different colour regardless of the track palette, so a kick now visibly reddens the nebula, a synth/pad shifts cyan, hi-hats add pink shimmer.
+- **Spectrum analyzer gain ×4 → ×6**, lerp rate 10 → 18. Raw magnitudes from Godot's `AudioEffectSpectrumAnalyzer` are 0.05–0.3 in typical music; ×6 with clamp lets real beats actually saturate the analyzer output to 1.0, and the snappier lerp gives bass attacks the punch they were missing.
+- **`KICK_PARALLAX_BOOST` 2.5 → 3.5**. With the player still and the music between kicks, the parallax was previously near-stationary; the bigger boost from `audio_low` keeps the field perceptibly scrolling.
+- **`bass_baseline` in nebula shader 2.5 → 2.0**, leaving more room for the new band-specific tints to be readable on top of the always-on palette glow.
+
 ## [0.1.1] - 2026-05-08
 
 ### Fixed
