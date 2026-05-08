@@ -21,11 +21,11 @@ const PLANET_PATHS := [
 # scale by its body width, not its bbox. Indexes match PLANET_PATHS.
 const PLANET_BODY_WIDTHS := [206.0, 249.0, 253.0, 245.0, 244.0, 350.0, 255.0, 242.0]
 const PLANET_BODY_TARGET_PX: float = 220.0
-# Pacing tarato per primo pianeta visibile entro ~5-8s di gioco e ricorrenza
-# ~15-20s a parallax_speed medio. Era 2500/22 → primo pianeta tra 30-50s di
-# attesa: troppo, il giocatore non vedeva mai una landmark.
-const PLANET_INTERVAL_PX: float = 1800.0  # spawn one every N pixels of accumulated distance
-const PLANET_SCROLL_SPEED: float = 55.0   # parallax planets feel distant ma in movimento visibile
+# Pacing 2× pi� lento: i pianeti sono landmark, devono sentirsi rari. Prima
+# 1800/55 → uno ogni ~12-18s + scroll molto rapido = sembravano "sciamati".
+# Ora ~30-40s tra l'uno e l'altro e drift verticale dimezzato.
+const PLANET_INTERVAL_PX: float = 3500.0  # spawn one every N pixels of accumulated distance
+const PLANET_SCROLL_SPEED: float = 28.0   # parallax dimezzato: planets float through, non corrono
 # Keep this in sync with Main.scroll_speed so the planet pacing tracks the
 # global "distance" counter (a planet should appear every PLANET_INTERVAL_PX
 # of in-game distance under default time dilation).
@@ -34,16 +34,16 @@ const REFERENCE_SCROLL_SPEED: float = 100.0
 # Deep-space landmarks (galaxies, nebulae, blackholes, clusters). Each kind has
 # its own pacing and visual treatment. They share the planet shader so they
 # inherit the per-track palette tint and bass pulse.
-# Pacing taratura: intervalli ridotti e scroll_base raddoppiato così le
-# landmark deep-space sono effettivamente avvistabili durante una run normale.
-# Prima: galaxy ogni 6500px @ 12 px/sec → ~120s tra una galassia e l'altra +
-# 30s di traversata = il giocatore non le vedeva quasi mai.
+# Pacing 2x più lento del precedente giro di tuning, così le landmark restano
+# rare e si "sentono". Plus intervalli volutamente non-multipli tra loro per
+# evitare che galaxy + nebula + cluster + blackhole spawni-no nello stesso
+# istante (il fenomeno "tutti insieme" che dava confusione visiva).
 const DEEP_CONFIGS := {
 	"galaxy": {
 		"path": "res://bg/galaxy_andromeda.png",
-		"interval_px": 5000.0,
+		"interval_px": 8000.0,
 		"body_target": 380.0,
-		"scroll_base": 30.0,
+		"scroll_base": 18.0,
 		"modulate": Color(0.85, 0.85, 0.95, 0.65),
 		"z": -9,
 		"tint_strength": 0.30,
@@ -51,9 +51,9 @@ const DEEP_CONFIGS := {
 	},
 	"nebula": {
 		"path": "res://bg/nebula_ring.png",
-		"interval_px": 5500.0,
+		"interval_px": 9500.0,
 		"body_target": 360.0,
-		"scroll_base": 35.0,
+		"scroll_base": 20.0,
 		"modulate": Color(1.0, 1.0, 1.0, 0.60),
 		"z": -9,
 		"tint_strength": 0.25,
@@ -61,9 +61,9 @@ const DEEP_CONFIGS := {
 	},
 	"blackhole": {
 		"path": "res://bg/blackhole_kerr.png",
-		"interval_px": 7000.0,
+		"interval_px": 12000.0,
 		"body_target": 320.0,
-		"scroll_base": 32.0,
+		"scroll_base": 18.0,
 		"modulate": Color(1.0, 1.0, 1.0, 0.85),
 		"z": -7,  # in front of planets — striking landmark
 		"tint_strength": 0.10,
@@ -71,9 +71,9 @@ const DEEP_CONFIGS := {
 	},
 	"cluster": {
 		"path": "res://bg/cluster_m13.png",
-		"interval_px": 3500.0,
+		"interval_px": 6500.0,
 		"body_target": 220.0,
-		"scroll_base": 45.0,
+		"scroll_base": 24.0,
 		"modulate": Color(1.0, 1.0, 0.92, 0.65),
 		"z": -8,
 		"tint_strength": 0.20,
@@ -152,9 +152,19 @@ func _ready():
 			deep_textures[kind] = load(path)
 		else:
 			push_warning("Deep landmark asset missing: " + path)
-		# Stagger initial accumulators verso valori alti così la prima landmark
-		# di ogni tipo entra in scena entro 10-30s, non dopo 100+.
-		deep_distance_accum[kind] = float(cfg["interval_px"]) * randf_range(0.55, 0.85)
+		# Stagger DETERMINISTICO per evitare che galaxy/cluster/nebula/blackhole
+		# spawni tutto insieme. Ogni tipo parte a una "frazione" diversa del
+		# proprio intervallo: cluster vede subito (0.85), galaxy poco dopo
+		# (0.65), nebula a metà (0.45), blackhole in lontananza (0.25). Combinato
+		# con i diversi interval_px, la cadenza percepita è più ariosa.
+		var initial_frac: float
+		match kind:
+			"cluster":   initial_frac = 0.85
+			"galaxy":    initial_frac = 0.65
+			"nebula":    initial_frac = 0.45
+			"blackhole": initial_frac = 0.25
+			_:           initial_frac = 0.50
+		deep_distance_accum[kind] = float(cfg["interval_px"]) * initial_frac
 
 	_init_layers()
 
@@ -168,22 +178,35 @@ func clear_landmarks() -> void:
 		child.queue_free()
 	planet_distance_accum = PLANET_INTERVAL_PX * 0.85
 	for kind in DEEP_CONFIGS:
-		deep_distance_accum[kind] = float(DEEP_CONFIGS[kind]["interval_px"]) * randf_range(0.55, 0.85)
+		var f: float
+		match kind:
+			"cluster":   f = 0.85
+			"galaxy":    f = 0.65
+			"nebula":    f = 0.45
+			"blackhole": f = 0.25
+			_:           f = 0.50
+		deep_distance_accum[kind] = float(DEEP_CONFIGS[kind]["interval_px"]) * f
 	planet_sequence = 0
 
 func _init_layers():
-	# 1. LAYER DEEP (Galaxies, tiny flares)
-	for i in range(4):
+	# Densità ridotta: prima ~120 elementi tra stars+flares+constellations →
+	# percepiti come "rumore". Ora ~50 totali, distribuiti per dare profondità
+	# ma non saturare. Inoltre brightness sotto 1.0 per evitare bloom HDR
+	# (glow_hdr_threshold=0.9 in Main): le stelline dovrebbero essere puntiformi,
+	# non aloni.
+
+	# 1. LAYER DEEP (Galaxies, tiny flares) — far/quasi-statico
+	for i in range(2):
 		layer_deep.append({
 			"type": "galaxy",
 			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
 			"speed": randf_range(2.0, 5.0),
-			"size": randf_range(5.0, 12.0),
+			"size": randf_range(5.0, 10.0),
 			"angle": randf() * PI * 2.0,
 			"arms": randi() % 2 + 2,
-			"brightness": randf_range(0.05, 0.15)
+			"brightness": randf_range(0.04, 0.10)
 		})
-	for i in range(10):
+	for i in range(5):
 		layer_deep.append({
 			"type": "flare",
 			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
@@ -191,37 +214,36 @@ func _init_layers():
 			"pulse_offset": randf() * PI * 2.0,
 			"pulse_speed": randf_range(0.5, 1.0)
 		})
-		
-	# 2. LAYER MID (Distant static stars)
-	for i in range(70):
+
+	# 2. LAYER MID (Distant stars) — ridotto da 70 a 30
+	for i in range(30):
 		layer_mid.append({
 			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
 			"speed": randf_range(15.0, 30.0),
-			"brightness": randf_range(0.1, 0.4)
+			"brightness": randf_range(0.1, 0.35)
 		})
-		
-	# 3. LAYER NEAR (Fast stars and Constellations)
-	for i in range(4): # Costellazioni giganti
-		var num_stars = randi() % 5 + 4
+
+	# 3. LAYER NEAR (Fast stars + Constellations) — costellazioni 4→2, stars 30→12
+	for i in range(2):
+		var num_stars = randi() % 4 + 3
 		var c_pos = Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y)
-		var speed = randf_range(2.0, 8.0) # Quasi ferme
+		var speed = randf_range(2.0, 8.0)
 		var stars = []
 		for s in range(num_stars):
-			# Estensione enorme
 			stars.append(Vector2(randf_range(-200, 200), randf_range(-200, 200)))
 		layer_near.append({
 			"type": "constellation",
 			"pos": c_pos,
 			"speed": speed,
 			"stars": stars,
-			"brightness": randf_range(0.6, 1.0)
+			"brightness": randf_range(0.5, 0.85)
 		})
-	for i in range(30):
+	for i in range(12):
 		layer_near.append({
 			"type": "star",
 			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
 			"speed": randf_range(60.0, 100.0),
-			"brightness": randf_range(0.5, 1.0)
+			"brightness": randf_range(0.4, 0.85)
 		})
 		
 	# 4. LAYER TOP (Planets, Asteroids, Comets)
@@ -523,20 +545,23 @@ func _draw():
 				var intensity = (pulse - 0.9) * 10.0
 				draw_rect(Rect2(e.pos, Vector2(1, 1)), Color(2.5, 2.5, 2.5, intensity * 0.4)) # HDR Glow
 				
-	# 2. DRAW LAYER MID
+	# 2. DRAW LAYER MID — brightness sotto 1.0 (no bloom). Audio-mid sale fino a
+	# ~1.4 sui peak ma non in modo continuo.
 	for e in layer_mid:
-		draw_rect(Rect2(e.pos, Vector2(1, 1)), Color(1.5 + audio_mid*3.0, 1.5 + audio_mid*3.0, 1.5 + audio_mid*3.0, e.brightness)) # HDR Glow
-		
-	# 3. DRAW LAYER NEAR
+		var b: float = 0.85 + audio_mid * 0.6
+		draw_rect(Rect2(e.pos, Vector2(1, 1)), Color(b, b, b, e.brightness))
+
+	# 3. DRAW LAYER NEAR — stesso trattamento, leggermente più luminose.
 	for e in layer_near:
 		if e.type == "star":
-			draw_rect(Rect2(e.pos, Vector2(1, 1)), Color(1.8, 1.8, 1.8, e.brightness)) # HDR Glow — singolo pixel come il layer_mid
+			draw_rect(Rect2(e.pos, Vector2(1, 1)), Color(0.95, 0.95, 0.95, e.brightness))
 		elif e.type == "constellation":
 			draw_set_transform(e.pos, 0.0, Vector2.ONE)
+			var lb: float = 0.85 + audio_mid * 0.5
 			for s in range(e.stars.size() - 1):
-				draw_line(e.stars[s], e.stars[s+1], Color(1.2 + audio_mid*2.0, 1.2 + audio_mid*2.0, 1.2 + audio_mid*2.0, e.brightness * 0.08), 1.0) # Molto trasparenti
+				draw_line(e.stars[s], e.stars[s+1], Color(lb, lb, lb, e.brightness * 0.08), 1.0)
 			for s in e.stars:
-				draw_rect(Rect2(s, Vector2(1, 1)), Color(1.8, 1.8, 1.8, e.brightness * 0.2)) # Piccole e deboli
+				draw_rect(Rect2(s, Vector2(1, 1)), Color(0.95, 0.95, 0.95, e.brightness * 0.2))
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# 4. DRAW LAYER TOP
