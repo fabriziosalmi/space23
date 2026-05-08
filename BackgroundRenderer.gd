@@ -21,8 +21,11 @@ const PLANET_PATHS := [
 # scale by its body width, not its bbox. Indexes match PLANET_PATHS.
 const PLANET_BODY_WIDTHS := [206.0, 249.0, 253.0, 245.0, 244.0, 350.0, 255.0, 242.0]
 const PLANET_BODY_TARGET_PX: float = 220.0
-const PLANET_INTERVAL_PX: float = 2500.0  # spawn one every N pixels of accumulated distance
-const PLANET_SCROLL_SPEED: float = 22.0   # slow parallax — planets feel distant
+# Pacing tarato per primo pianeta visibile entro ~5-8s di gioco e ricorrenza
+# ~15-20s a parallax_speed medio. Era 2500/22 → primo pianeta tra 30-50s di
+# attesa: troppo, il giocatore non vedeva mai una landmark.
+const PLANET_INTERVAL_PX: float = 1800.0  # spawn one every N pixels of accumulated distance
+const PLANET_SCROLL_SPEED: float = 55.0   # parallax planets feel distant ma in movimento visibile
 # Keep this in sync with Main.scroll_speed so the planet pacing tracks the
 # global "distance" counter (a planet should appear every PLANET_INTERVAL_PX
 # of in-game distance under default time dilation).
@@ -31,12 +34,16 @@ const REFERENCE_SCROLL_SPEED: float = 100.0
 # Deep-space landmarks (galaxies, nebulae, blackholes, clusters). Each kind has
 # its own pacing and visual treatment. They share the planet shader so they
 # inherit the per-track palette tint and bass pulse.
+# Pacing taratura: intervalli ridotti e scroll_base raddoppiato così le
+# landmark deep-space sono effettivamente avvistabili durante una run normale.
+# Prima: galaxy ogni 6500px @ 12 px/sec → ~120s tra una galassia e l'altra +
+# 30s di traversata = il giocatore non le vedeva quasi mai.
 const DEEP_CONFIGS := {
 	"galaxy": {
 		"path": "res://bg/galaxy_andromeda.png",
-		"interval_px": 6500.0,
+		"interval_px": 5000.0,
 		"body_target": 380.0,
-		"scroll_base": 12.0,
+		"scroll_base": 30.0,
 		"modulate": Color(0.85, 0.85, 0.95, 0.65),
 		"z": -9,
 		"tint_strength": 0.30,
@@ -44,9 +51,9 @@ const DEEP_CONFIGS := {
 	},
 	"nebula": {
 		"path": "res://bg/nebula_ring.png",
-		"interval_px": 7500.0,
+		"interval_px": 5500.0,
 		"body_target": 360.0,
-		"scroll_base": 18.0,
+		"scroll_base": 35.0,
 		"modulate": Color(1.0, 1.0, 1.0, 0.60),
 		"z": -9,
 		"tint_strength": 0.25,
@@ -54,9 +61,9 @@ const DEEP_CONFIGS := {
 	},
 	"blackhole": {
 		"path": "res://bg/blackhole_kerr.png",
-		"interval_px": 9500.0,
+		"interval_px": 7000.0,
 		"body_target": 320.0,
-		"scroll_base": 16.0,
+		"scroll_base": 32.0,
 		"modulate": Color(1.0, 1.0, 1.0, 0.85),
 		"z": -7,  # in front of planets — striking landmark
 		"tint_strength": 0.10,
@@ -64,9 +71,9 @@ const DEEP_CONFIGS := {
 	},
 	"cluster": {
 		"path": "res://bg/cluster_m13.png",
-		"interval_px": 4500.0,
+		"interval_px": 3500.0,
 		"body_target": 220.0,
-		"scroll_base": 28.0,
+		"scroll_base": 45.0,
 		"modulate": Color(1.0, 1.0, 0.92, 0.65),
 		"z": -8,
 		"tint_strength": 0.20,
@@ -84,7 +91,7 @@ var nebula_time: float = 0.0
 var planet_layer: Node2D
 var planet_textures: Array = []
 var planet_sequence: int = 0
-var planet_distance_accum: float = PLANET_INTERVAL_PX * 0.4  # seed: first one comes early
+var planet_distance_accum: float = PLANET_INTERVAL_PX * 0.85  # seed: first one entro ~5s di gioco
 var current_palette_tint: Vector3 = Vector3(0.5, 0.3, 0.8)
 var last_audio_low: float = 0.0
 
@@ -132,8 +139,9 @@ func _ready():
 			deep_textures[kind] = load(path)
 		else:
 			push_warning("Deep landmark asset missing: " + path)
-		# Stagger initial accumulators so they don't all spawn together at boot.
-		deep_distance_accum[kind] = float(cfg["interval_px"]) * randf_range(0.1, 0.6)
+		# Stagger initial accumulators verso valori alti così la prima landmark
+		# di ogni tipo entra in scena entro 10-30s, non dopo 100+.
+		deep_distance_accum[kind] = float(cfg["interval_px"]) * randf_range(0.55, 0.85)
 
 	_init_layers()
 
@@ -145,9 +153,9 @@ func clear_landmarks() -> void:
 		child.queue_free()
 	for child in deep_layer.get_children():
 		child.queue_free()
-	planet_distance_accum = PLANET_INTERVAL_PX * 0.4
+	planet_distance_accum = PLANET_INTERVAL_PX * 0.85
 	for kind in DEEP_CONFIGS:
-		deep_distance_accum[kind] = float(DEEP_CONFIGS[kind]["interval_px"]) * randf_range(0.1, 0.6)
+		deep_distance_accum[kind] = float(DEEP_CONFIGS[kind]["interval_px"]) * randf_range(0.55, 0.85)
 	planet_sequence = 0
 
 func _init_layers():
@@ -346,7 +354,7 @@ func _tick_planets(delta: float, effective_speed: float, player_vel_x: float = 0
 			sp.material.set_shader_parameter("tint", current_palette_tint)
 			sp.material.set_shader_parameter("audio_low", last_audio_low)
 
-		if sp.position.y > screen_size.y + 400:
+		if sp.position.y > screen_size.y + 200:
 			sp.queue_free()
 
 func _tick_deep_landmarks(delta: float, effective_speed: float, player_vel_x: float = 0.0) -> void:
@@ -373,7 +381,7 @@ func _tick_deep_landmarks(delta: float, effective_speed: float, player_vel_x: fl
 		if sp.material:
 			sp.material.set_shader_parameter("tint", current_palette_tint)
 			sp.material.set_shader_parameter("audio_low", last_audio_low)
-		if sp.position.y > screen_size.y + 600:
+		if sp.position.y > screen_size.y + 250:
 			sp.queue_free()
 
 func _spawn_deep_landmark(kind: String) -> void:
@@ -395,9 +403,12 @@ func _spawn_deep_landmark(kind: String) -> void:
 	sp.scale = Vector2(scale_factor, scale_factor)
 
 	# Spread across screen with margin so the body doesn't clip; randomized.
+	# Spawn appena sopra il viewport (-180..-280) così il landmark è visibile
+	# in pochi secondi dopo lo spawn — era -360..-600 e con scroll a 12-28 px/sec
+	# servivano 15-50s di traversata prima che entrasse in scena.
 	var margin: float = 220.0
 	var rx: float = randf_range(margin, screen_size.x - margin)
-	var ry: float = -randf_range(360, 600)
+	var ry: float = -randf_range(180, 280)
 	sp.position = Vector2(rx, ry)
 	sp.modulate = cfg["modulate"]
 	sp.rotation = randf_range(-0.4, 0.4)  # slight tilt — these are not "facing camera"
@@ -446,8 +457,10 @@ func _spawn_planet() -> void:
 	else:
 		rx = randf_range(half + 40, screen_size.x - margin)
 
-	# Y entry jitter so they don't all appear at the exact same line.
-	var ry: float = -randf_range(260, 480)
+	# Y entry jitter — spawn appena sopra il viewport così il pianeta è visibile
+	# entro 1-2s. Era -260..-480 con scroll 22 px/sec → 12-22s di traversata
+	# prima che entrasse in scena.
+	var ry: float = -randf_range(120, 200)
 
 	# A slow horizontal drift gives the impression they're crossing the scene
 	# rather than scrolling vertically in lockstep.

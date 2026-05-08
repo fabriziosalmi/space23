@@ -70,10 +70,15 @@ void fragment() {
 	// c_neb2 (below). This way a kick-heavy section reads as "violet pulse"
 	// while a synth/pad section reads as "blue surge" — each band has its own
 	// visible signature instead of all of them just brightening everything.
-	float bass_baseline = 0.6;
+	//
+	// bass_baseline alto (1.5) = nebula sempre visibile anche con audio_low=0,
+	// così le sezioni quiete tra una cassa e l'altra non spegnono il cielo.
+	// Era 0.6: troppo basso con la palette scura (c_neb1 ≈ 0.15-0.3 max channel),
+	// risultato visivo "nebula scompare quando il bass cala".
+	float bass_baseline = 1.5;
 	float bass_kick = audio_low * audio_low * 16.0;
 	color += c_neb1 * n1 * (bass_baseline + bass_kick);
-	color += c_neb2 * n2 * (bass_baseline * 0.5 + bass_kick * 0.15);
+	color += c_neb2 * n2 * (bass_baseline * 0.4 + bass_kick * 0.15);
 
 	// --- MID — pump c_neb2 + the fine n3 sub-cloud ---
 	// Linear gain on the main n2 cloud (more reactive than just the n3 micro-
