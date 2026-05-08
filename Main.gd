@@ -593,11 +593,18 @@ func _process(delta: float) -> void:
 		_on_retry_pressed()
 		return
 
+	# Sub-state dispatch ESCLUSIVO. Prima era una catena spuria:
+	#   if GAMEOVER: _tick_gameover_fx(...)
+	#   if is_intro: _tick_intro
+	#   elif transitioning: _tick_track_transition
+	#   else: _tick_playing
+	# Risultato: in GAMEOVER giravano sia _tick_gameover_fx che _tick_playing,
+	# con _tick_playing a sovrascrivere target_speed, far crescere flow/score
+	# dal y_ratio, lerpare la camera verso target_cam_x in conflitto col lerp
+	# verso player.position di _tick_gameover_fx, e consumare il bomb_buffer.
 	if game_state == "GAMEOVER":
 		_tick_gameover_fx(delta)
-
-	# Sub-state: INTRO / TRANSITION / PLAYING vero
-	if is_intro:
+	elif is_intro:
 		_tick_intro(delta)
 	elif audio_manager.is_transitioning:
 		_tick_track_transition(delta)
@@ -607,8 +614,11 @@ func _process(delta: float) -> void:
 	# Tempo globale (smooth verso target)
 	global_speed_multiplier = lerp(global_speed_multiplier, target_speed_multiplier, 1.5 * delta)
 
-	# Boss spawn + wave director (solo durante PLAYING)
-	if not is_intro and not audio_manager.is_transitioning:
+	# Boss spawn + wave director SOLO in PLAYING reale. Il vecchio gate
+	# (not is_intro and not transitioning) lasciava passare il GAMEOVER → boss
+	# poteva spawnare a fine traccia dopo la morte, e il wave director
+	# continuava a sfornare nemici sul cadavere.
+	if game_state == "PLAYING" and not audio_manager.is_transitioning:
 		_check_boss_spawn()
 		wave_director.tick(delta, distance, screen_size)
 
