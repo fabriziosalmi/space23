@@ -72,11 +72,18 @@ vec3 starfield_layer(vec2 uv, float density, float appear_thr, float core_radius
 	// hanno problemi con early-return in fragment shader, soprattutto se
 	// seguiti da texture sampling). Visibility = step() · core, moltiplica
 	// invece di branchare.
-	vec2 cell = floor(uv * density);
+	// Row-stagger: shift alternate rows by half a cell on X. Senza questo
+	// la griglia axis-aligned produceva column-alignment visibile durante lo
+	// scroll verticale (le stelle nella stessa cell-column apparivano come
+	// linee verticali). Lo shift brick-pattern rompe l'alignment senza
+	// alterare la densità o la random-ness del placement.
+	vec2 grid = uv * density;
+	grid.x += step(1.0, mod(floor(grid.y), 2.0)) * 0.5;
+	vec2 cell = floor(grid);
 	float h = hash21(cell);
 	float visible = step(appear_thr, h);
 
-	vec2 cell_uv = fract(uv * density);
+	vec2 cell_uv = fract(grid);
 	vec2 jitter = vec2(hash21(cell + 1.7), hash21(cell + 7.3)) * 0.7 + 0.15;
 	float d = length(cell_uv - jitter);
 	float core = smoothstep(core_radius, 0.0, d);
@@ -157,9 +164,13 @@ void fragment() {
 	color += vec3(0.95, 0.5, 1.0) * audio_high * smoothstep(0.65, 0.9, n2) * 0.7;
 
 	// --- STARFIELD — 2 layer procedurali in loop, twinkle per-stella ---
-	// Density bumped + core_radius reduced: stelle più piccole (puntiformi)
-	// mantenendo lo stesso pattern e densità visiva. Era 90/0.05 e 50/0.08
-	// → user vedeva stelle "troppo grandi". Adesso 140/0.035 e 75/0.05.
+	// Layer 1: stelle piccole frequenti (140 cells/UV, core 0.035, multiplier
+	// peak ~1.1). Layer 2: stelle "leggermente più grandi" più rare (era
+	// 75/0.05/×1.2 con peak 1.56 → bloom forte sui twinkle peak = "stelle
+	// troppo grandi" segnalate dall'utente). Adesso 55/0.04/×0.9 con peak
+	// ~1.17 → bloom solo sui peak veri, niente halo costanti. Inoltre
+	// appear_thr 0.992 → 0.994 (≈25% meno stelle layer 2) → cielo meno
+	// affollato + meno line pattern (bricks più spaziati).
 	// Direzione: `-= scroll_time` ⇒ in Godot canvas_item le UV.y crescono
 	// verso il basso, quindi sottrarre nel sample shifta il pattern visivo
 	// VERSO IL BASSO (illusione "ship moving forward"). Prima era += →
@@ -173,7 +184,7 @@ void fragment() {
 	vec2 star_uv2 = UV;
 	star_uv2.y -= scroll_time * 0.10;
 	star_uv2.x += lat;
-	color += starfield_layer(star_uv2, 75.0, 0.992, 0.05, 5.0) * 1.2 * (0.8 + audio_high * 0.5);
+	color += starfield_layer(star_uv2, 55.0, 0.994, 0.04, 5.0) * 0.9 * (0.8 + audio_high * 0.5);
 
 	// --- SPEED STREAKS — sottili linee verticali "warp" che vendono velocità ---
 	// Pochissime, sottili, scrollano fast verso il basso, intensità modulata
