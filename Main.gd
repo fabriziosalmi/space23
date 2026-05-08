@@ -312,15 +312,56 @@ const _DEFAULT_KEY_BINDINGS := {
 	"pause":      [KEY_ESCAPE, KEY_P],
 }
 
+# Joypad button bindings (Xbox layout — PS controllers map identically via
+# Godot's gamepad DB). D-pad per il movimento digitale; face button A/X per
+# fire (+ RB), B/O per dash (+ LB), X/□ per bomb (+ Y/△ come secondario),
+# Start per pause. Stick analogico aggiunto sotto via InputEventJoypadMotion.
+const _DEFAULT_JOY_BUTTONS := {
+	"move_up":    [JOY_BUTTON_DPAD_UP],
+	"move_down":  [JOY_BUTTON_DPAD_DOWN],
+	"move_left":  [JOY_BUTTON_DPAD_LEFT],
+	"move_right": [JOY_BUTTON_DPAD_RIGHT],
+	"fire":       [JOY_BUTTON_A, JOY_BUTTON_RIGHT_SHOULDER],
+	"dash":       [JOY_BUTTON_B, JOY_BUTTON_LEFT_SHOULDER],
+	"bomb":       [JOY_BUTTON_X, JOY_BUTTON_Y],
+	"pause":      [JOY_BUTTON_START],
+}
+
+# Stick analogico (left). Formato: [axis_index, sign]. Sign -1 = direzione
+# negativa dell'asse (su / sinistra), +1 = positiva (giù / destra). Godot
+# usa una deadzone di 0.5 per is_action_pressed → lo stick fa effetto solo
+# oltre il 50% di inclinazione (Livello A: digitale). Il Livello B userebbe
+# get_action_strength per analogico graduato — non incluso qui.
+const _DEFAULT_JOY_AXES := {
+	"move_up":    [JOY_AXIS_LEFT_Y, -1.0],
+	"move_down":  [JOY_AXIS_LEFT_Y,  1.0],
+	"move_left":  [JOY_AXIS_LEFT_X, -1.0],
+	"move_right": [JOY_AXIS_LEFT_X,  1.0],
+}
+
 func _setup_input_actions() -> void:
 	for action_name in _DEFAULT_KEY_BINDINGS.keys():
 		if InputMap.has_action(action_name):
 			InputMap.erase_action(action_name)
 		InputMap.add_action(action_name)
+		# Keyboard bindings
 		for k in _DEFAULT_KEY_BINDINGS[action_name]:
-			var ev := InputEventKey.new()
-			ev.physical_keycode = k
-			InputMap.action_add_event(action_name, ev)
+			var key_ev := InputEventKey.new()
+			key_ev.physical_keycode = k
+			InputMap.action_add_event(action_name, key_ev)
+		# Joypad button bindings (D-pad + face buttons + shoulders)
+		if _DEFAULT_JOY_BUTTONS.has(action_name):
+			for btn in _DEFAULT_JOY_BUTTONS[action_name]:
+				var btn_ev := InputEventJoypadButton.new()
+				btn_ev.button_index = btn
+				InputMap.action_add_event(action_name, btn_ev)
+		# Joypad analog axis bindings (left stick)
+		if _DEFAULT_JOY_AXES.has(action_name):
+			var ai: Array = _DEFAULT_JOY_AXES[action_name]
+			var axis_ev := InputEventJoypadMotion.new()
+			axis_ev.axis = ai[0]
+			axis_ev.axis_value = ai[1]
+			InputMap.action_add_event(action_name, axis_ev)
 
 # ============================================================
 # STATE TRANSITIONS

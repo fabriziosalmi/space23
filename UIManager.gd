@@ -329,7 +329,7 @@ func _process(delta):
 		bomb_label.modulate = Color.WHITE
 
 func _input(event):
-	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch):
+	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch or event is InputEventJoypadButton):
 		if not event.is_pressed() and not event.is_echo():
 			title_label.hide()
 			leaderboard_label.hide()
