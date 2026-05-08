@@ -1,0 +1,19 @@
+# Forziamo LF per i sorgenti — coerenza tra dev su Mac/Linux/Windows.
+*.gd       text eol=lf
+*.gdshader text eol=lf
+*.tscn     text eol=lf
+*.godot    text eol=lf
+*.json     text eol=lf
+*.md       text eol=lf
+*.yml      text eol=lf
+
+# Git LFS:
+# I binari pesanti (*.mp3, screenshot.png) NON sono dichiarati come LFS qui
+# perché farlo senza una migrazione completa della history confonde il working
+# tree (i file in disk restano binari, ma git li tratterebbe come pointer al
+# prossimo commit). La migrazione one-shot — vedi README.md → "Git LFS" —
+# riscrive la history E aggiunge le righe `filter=lfs` qui sotto in un colpo solo:
+#
+#   git lfs install
+#   git lfs migrate import --everything --include="*.mp3,screenshot.png"
+#   git push --force-with-lease origin main
