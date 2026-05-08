@@ -12,3 +12,6 @@ export_presets.cfg
 # Export output directories
 /build/
 /export/
+
+# Local Claude Code settings (per-machine permissions/config — not portable)
+.claude/
