@@ -2,6 +2,18 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.16] - 2026-05-08
+
+### Removed
+- **SuperHot velocity coupling.** v0.1.15 reduced the dilation magnitude from `[0.5, 1.0]` to `[0.9, 1.0]` but the user reported that even at 10% the synchronous oscillation was still readable as "il mondo cambia velocità con me" = artificial. Diagnosis: the oscillation is intrinsic to the `player.velocity → gsm` coupling, not to having a global multiplier. Fix: kill the coupling entirely (Opzione α). World now runs at constant rate during `PLAYING`. Speed moments still happen on discrete events: drop boost (4×), hit-stop (frame skip), track transition (0.5×), intro (0.1×), dash (Player boosts its own velocity, gsm stays at 1.0). `flow_state` continues to add a slow-rate bias (0.08/s gain — perceived as a trend, not as oscillation). Trade-off accepted: the "il mondo ha leggero peso da fermo" feel is gone — at `[0.9, 1.0]` it was already ≤10 % effect anyway.
+
+### Fixed
+- **Starfield layer 2 too-big stars.** The procedural starfield's second layer had `core_radius = 0.05` and a `× 1.2 × (0.8 + audio_high * 0.5)` brightness multiplier — peak ~1.56 in HDR, well above the bloom threshold (0.9) → constant haloed "big stars" rather than the intended sparse accents. Tuned: density `75 → 55`, core `0.05 → 0.04`, multiplier `1.2 → 0.9`, `appear_thr 0.992 → 0.994` (~25 % fewer stars). Peak now ~1.17 → bloom triggers only on the actual highest twinkle/audio peaks. Layer 1 (the small frequent stars) untouched.
+- **Starfield row-aligned columns.** The `starfield_layer` used `floor(uv * density)` for cell placement → axis-aligned grid → vertical scrolling made stars in the same x-cell appear as visible columns/lines. Fix: row-stagger inside `starfield_layer` — alternate rows shift x by half a cell (`grid.x += step(1.0, mod(floor(grid.y), 2.0)) * 0.5`). Brick-pattern grid breaks the column perception while preserving per-cell deterministic randomness. Zero perf cost.
+
+### Documentation
+- **README refreshed.** Removed the false SUPERHOT claim; updated enemy count to "twelve enemy variants across six AI patterns" (12 entries in `ENEMY_TYPES` since the wave expansion); added the gamepad/joypad controls section (joypad support shipped in v0.1.15 but was undocumented); added Highlights bullets for the audio-reactive elements that grew over the polish releases (palette tease, powerup ring, lateral parallax, synth audio fallback for web, low-HP heartbeat, damage edge glow, boss telegraph + charge SFX).
+
 ## [0.1.15] - 2026-05-08
 
 ### Added
