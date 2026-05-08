@@ -878,20 +878,18 @@ func _tick_playing(delta: float) -> void:
 			drop_event_triggered = true
 			_on_drop_event()
 
-	# SUPERHOT: time dilation legata alla velocità del player. Floor 0.9
-	# (prima 0.5, prima ancora 0.05). Il floor 0.5 toglieva lo stutter
-	# discreto del 0.05 ma lasciava un'oscillazione *continua* sincrona:
-	# tutti gli elementi gsm-scaled (bullets, enemies, scroll, comete)
-	# pulsavano insieme al ritmo dei cambi di velocità del player. Anche
-	# smooth, il sync era leggibile come "il mondo cambia velocità con me"
-	# = artificial. A 0.9 l'ampiezza scende dal 50% al 10% — sotto la
-	# soglia percettiva. SuperHot vive ancora come *feeling* sottile
-	# ("il mondo ha leggero peso quando ti fermi") senza il sync visibile.
-	# Se ulteriormente eccessivo, escalation: disaccoppiare il bg dal gsm.
-	var speed_ratio: float = clamp(player.velocity.length() / player.max_speed, 0.9, 1.0)
-	if player.is_dashing:
-		speed_ratio = 1.0  # Dash forza il tempo reale
-	target_speed_multiplier = base_target_speed * speed_ratio * (1.0 + flow_state * FLOW_SPEED_BONUS)
+	# SuperHot velocity-coupling RIMOSSO in v0.1.16. Storia: v0.1.6 floor 0.5,
+	# v0.1.15 floor 0.9, v0.1.16 niente. Il coupling player.velocity → gsm
+	# creava un'oscillazione sincrona continua su tutti i sistemi gsm-scaled
+	# (bullets, enemies, scroll, comete) al ritmo dei cambi di velocità —
+	# leggibile come "il mondo cambia velocità con me" = artificial, anche
+	# smussato. I "speed moments" del gioco vivono ora SOLO su eventi
+	# discreti motivati: drop boost (4×), hit-stop (frame skip), track
+	# transition (0.5×), intro (0.1×), dash (Player aumenta la PROPRIA
+	# velocità — il mondo resta a 1.0). Il flow_state contribuisce ancora
+	# come bias graduale slow-rate (0.08/s gain → percepito come trend, non
+	# oscillazione). Niente più sync continuo.
+	target_speed_multiplier = base_target_speed * (1.0 + flow_state * FLOW_SPEED_BONUS)
 
 	# Smart bomb: consuma dal buffer (vedi _process) — copre i casi in cui il
 	# press è caduto durante intro/transition/hit-stop, evitando "il gioco mi ha
