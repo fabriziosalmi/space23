@@ -41,6 +41,15 @@ jobs:
           rm -rf templates templates.zip
 
       - name: Create export_presets.cfg
+        # head_include below adds iOS WebKit fixes beyond Godot's default shell:
+        #   - viewport meta (maximum-scale=1, user-scalable=no): prevents double-tap
+        #     zoom that resizes the canvas → triggers WebGL context reload (perceived
+        #     as "page refreshes after a few taps").
+        #   - viewport-fit=cover: canvas extends under the iPhone notch.
+        #   - touch-action: manipulation/none: kills 300ms tap-delay and default
+        #     gestures (zoom, swipe scroll) Safari would otherwise hijack.
+        #   - -webkit-touch-callout: none: kills long-press selection menu.
+        #   - position: fixed on body: kills iOS rubber-band scroll under the canvas.
         run: |
           cat <<'CFGEOF' > export_presets.cfg
           [preset.0]
@@ -64,7 +73,7 @@ jobs:
           vram_texture_compression/for_desktop=true
           vram_texture_compression/for_mobile=false
           html/custom_html_shell=""
-          html/head_include="<script src='audio-fix.js'></script><style>@media screen and (orientation: portrait) and (max-width: 1024px){#canvas,#status{display:none !important;}body::before{content:'Please rotate your device to landscape';position:fixed;inset:0;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;z-index:9999;font-family:sans-serif;font-size:1.2rem;text-align:center;padding:2rem;}}</style>"
+          html/head_include="<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover'><script src='audio-fix.js'></script><style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;position:fixed;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;background:#000;}canvas{touch-action:none;-webkit-user-select:none;user-select:none;display:block;}@media screen and (orientation: portrait) and (max-width: 1024px){#canvas,#status{display:none !important;}body::before{content:'Please rotate your device to landscape';position:fixed;inset:0;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;z-index:9999;font-family:sans-serif;font-size:1.2rem;text-align:center;padding:2rem;}}</style>"
           html/canvas_resize_policy=2
           html/focus_canvas_on_start=true
           html/experimental_virtual_keyboard=false

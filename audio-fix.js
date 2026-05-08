@@ -39,10 +39,42 @@
   W.AudioContext = Hook;
   if (W.webkitAudioContext) W.webkitAudioContext = Hook;
 
+  // iOS Safari "silent prime": resume() alone is not enough on iOS WebKit —
+  // even after the AudioContext state flips to 'running', no audio plays
+  // until a buffer source has been started inside the ORIGINAL user gesture
+  // handler (not in a .then() callback, which runs async after the gesture
+  // has been consumed). The trick: queue a 1-sample silent buffer
+  // synchronously; iOS registers it as "audio is playing" and unlocks the
+  // pipeline for all subsequent sources. Idempotent via WeakSet so repeated
+  // taps don't pile up no-op buffers.
+  // Symptoms without this on iPhone (Safari/Firefox/Chrome — all WebKit):
+  // game runs, music shows as 'running' in the AudioContext, but device is
+  // silent. With it, audio comes through on the first tap.
+  var primed = (typeof WeakSet !== 'undefined') ? new WeakSet() : null;
+  function primeContext(c) {
+    if (!c || (primed && primed.has(c))) return;
+    try {
+      var buf = c.createBuffer(1, 1, 22050);
+      var src = c.createBufferSource();
+      src.buffer = buf;
+      src.connect(c.destination);
+      src.start(0);
+      if (primed) primed.add(c);
+      console.log('[audio-fix] iOS prime: silent buffer queued on idx=' + instances.indexOf(c));
+    } catch (err) {
+      console.warn('[audio-fix] prime failed:', err);
+    }
+  }
+
   function resumeAll(triggerEvent) {
     for (var i = 0; i < instances.length; i++) {
       var c = instances[i];
-      if (c && c.state === 'suspended') {
+      if (!c) continue;
+      // Prime synchronously inside the gesture (works on iOS even if state
+      // is currently 'suspended' — the queued source plays as soon as
+      // resume() succeeds).
+      primeContext(c);
+      if (c.state === 'suspended') {
         var idx = i;
         c.resume().then(function () {
           console.log('[audio-fix] resumed (event=' + (triggerEvent && triggerEvent.type) + ', idx=' + idx + ', state=' + c.state + ', sr=' + c.sampleRate + ', currentTime=' + c.currentTime.toFixed(3) + ')');
