@@ -15,38 +15,38 @@ var camera_ref: Node2D = null
 
 var playlist = [
 	{
-		"file": "res://1.mp3",
+		"file": "res://1.ogg",
 		"drop_time": 26.0,
 		# Track 1: viola/blu (mood notturno techno).  3x brighter degli originali
 		# cosi' la nebula resta visibile anche tra una cassa e l'altra.
 		"colors": [Color(0.015, 0.0, 0.045), Color(0.15, 0.03, 0.3), Color(0.0, 0.15, 0.45)]
 	},
 	{
-		"file": "res://2.mp3",
+		"file": "res://2.ogg",
 		"drop_time": 44.0,
 		# Track 2: rosso/arancio (mood acido caldo).
 		"colors": [Color(0.045, 0.0, 0.015), Color(0.3, 0.03, 0.15), Color(0.45, 0.15, 0.0)]
 	},
 	{
-		"file": "res://3.mp3",
+		"file": "res://3.ogg",
 		"drop_time": 32.0,
 		# Track 3: verde (mood industrial cyberpunk).
 		"colors": [Color(0.0, 0.045, 0.015), Color(0.03, 0.3, 0.15), Color(0.15, 0.45, 0.0)]
 	},
 	{
-		"file": "res://4.mp3",
+		"file": "res://4.ogg",
 		"drop_time": 40.0,  # 145 BPM × 32 bar ≈ 53s; estimate 40s — adjust on play
 		# Track 4: ciano profondo (deep ocean / nebula blue).
 		"colors": [Color(0.0, 0.03, 0.06), Color(0.0, 0.18, 0.4), Color(0.05, 0.4, 0.55)]
 	},
 	{
-		"file": "res://5.mp3",
+		"file": "res://5.ogg",
 		"drop_time": 33.0,  # 145 BPM × ~20 bar
 		# Track 5: ambra / coral (warm sunset).
 		"colors": [Color(0.06, 0.02, 0.0), Color(0.4, 0.18, 0.05), Color(0.6, 0.3, 0.1)]
 	},
 	{
-		"file": "res://6.mp3",
+		"file": "res://6.ogg",
 		"drop_time": 27.0,  # 145 BPM × 16 bar ≈ 26.5s
 		# Track 6: magenta / cosmic violet.
 		"colors": [Color(0.04, 0.0, 0.05), Color(0.3, 0.05, 0.4), Color(0.5, 0.1, 0.6)]

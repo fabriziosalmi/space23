@@ -45,13 +45,39 @@
       if (c && c.state === 'suspended') {
         var idx = i;
         c.resume().then(function () {
-          console.log('[audio-fix] resumed (event=' + (triggerEvent && triggerEvent.type) + ', idx=' + idx + ')');
+          console.log('[audio-fix] resumed (event=' + (triggerEvent && triggerEvent.type) + ', idx=' + idx + ', state=' + c.state + ', sr=' + c.sampleRate + ', currentTime=' + c.currentTime.toFixed(3) + ')');
         }).catch(function (err) {
           console.warn('[audio-fix] resume() failed:', err);
         });
       }
     }
   }
+
+  // Diagnostic helper: run from devtools console as `spaceAudioTest()`.
+  // Plays a short 440 Hz tone on the FIRST registered AudioContext (the same
+  // one Godot uses), routed straight to ctx.destination. Bypasses Godot's
+  // bus/effect chain entirely, so:
+  //   - hear a beep ⇒ the AudioContext output is fine, the issue is Godot's
+  //     internal routing (AudioServer bus / spectrum effect / stream player).
+  //   - silent ⇒ the AudioContext destination itself isn't reaching the OS
+  //     output (very rare; usually a system mute or wrong output device).
+  W.spaceAudioTest = function (freq, durMs) {
+    if (!instances.length) {
+      console.warn('[audio-fix] no AudioContext registered yet');
+      return;
+    }
+    var c = instances[0];
+    var f = freq || 440;
+    var d = (durMs || 200) / 1000;
+    var o = c.createOscillator();
+    var g = c.createGain();
+    g.gain.value = 0.15;
+    o.frequency.value = f;
+    o.connect(g).connect(c.destination);
+    o.start();
+    o.stop(c.currentTime + d);
+    console.log('[audio-fix] test tone (' + f + 'Hz / ' + (d * 1000) + 'ms) on ctx state=' + c.state);
+  };
 
   // Capture phase + both window and document so we still catch the event even
   // if a canvas-level listener calls stopPropagation. `passive: true` keeps
