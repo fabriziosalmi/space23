@@ -20,16 +20,17 @@ run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://saturn.png"
 # Boot splash: la nave procedurale che brilla su nero. boot.png è una
-# rasterizzazione di boot.svg disegnato matching le coordinate del
-# ship_renderer reale (NOSE, WINGS, ENGINES) con glow filter.
+# rasterizzazione di boot.svg (viewBox 1280×720) cropped a 1280×720 16:9
+# match-aspect col canvas Godot. Prima era 1280×1280 (qlmanage paddava il
+# canvas a quadrato) → bande trasparenti top/bottom rivelavano il bg del
+# browser durante il loading.
 boot_splash/show_image=true
 boot_splash/image="res://boot.png"
 boot_splash/bg_color=Color(0, 0, 0, 1)
 boot_splash/use_filter=true
-# fullsize=true: scala l'immagine per fillare l'intero viewport (con bg_color
-# nelle eventuali bande di letterboxing). Senza, l'immagine 1280×1280 veniva
-# centrata in un canvas più piccolo e il browser body color (white) si vedeva
-# attorno.
+# fullsize=true: scala l'immagine per fillare l'intero viewport. Con PNG
+# 1280×720 (16:9, stesso aspect del canvas) la copertura è esatta, niente
+# letterboxing visibile.
 boot_splash/fullsize=true
 
 [display]

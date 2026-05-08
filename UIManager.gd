@@ -290,7 +290,7 @@ func _on_pause_overlay_input(event: InputEvent) -> void:
 	elif event is InputEventScreenTouch and event.pressed:
 		pause_toggle_requested.emit()
 
-func _process(delta):
+func _process(_delta):
 	if title_label.visible:
 		var time = Time.get_ticks_msec() / 1000.0
 		# Blink effettivo su "PRESS ENTER TO START" se volessimo,

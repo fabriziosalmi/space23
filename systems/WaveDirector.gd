@@ -63,7 +63,6 @@ func tick(delta: float, distance: float, screen_size: Vector2) -> void:
 	# Phase coupling con la musica: il vero "AI Director" è la traccia. Calcoliamo
 	# un moltiplicatore sulla wave_timer in base a dove siamo nel brano.
 	var phase_mult: float = 1.0
-	var phase: String = "normal"
 	if audio_manager and audio_manager.audio_stream_player and audio_manager.audio_stream_player.stream:
 		var current_idx: int = audio_manager.current_track_idx
 		# Track change auto-invalidates the drop guard: la nuova traccia ha il
@@ -76,20 +75,17 @@ func tick(delta: float, distance: float, screen_size: Vector2) -> void:
 		var drop: float = audio_manager.get_current_drop_time()
 		var dt: float = pos - drop  # offset dal drop (negativo = pre-drop)
 		if dt < 0.0 and dt > -PHASE_BUILDUP_LEAD:
-			phase = "buildup"
-			phase_mult = 1.5  # rallenta spawn → tensione, anticipazione
+			phase_mult = 1.5  # buildup: rallenta spawn → tensione, anticipazione
 			_drop_fired_for_track = -1
 		elif dt >= 0.0 and dt < PHASE_DROP_HIT_WINDOW:
-			phase = "drop"
-			# Force-spawn one-shot al primo frame post-drop: butta in arena una raffica.
-			# Guard track-keyed: se è già stato sparato per questa traccia, skip.
+			# Drop: force-spawn one-shot al primo frame post-drop, raffica.
+			# Guard track-keyed: se già sparato per questa traccia, skip.
 			if _drop_fired_for_track != current_idx:
 				_drop_fired_for_track = current_idx
 				wave_timer = 0.0  # consumiamo subito una wave
 			phase_mult = 0.6  # spawn più frequenti durante il drop
 		elif dt >= PHASE_POST_DROP_START and dt < PHASE_POST_DROP_END:
-			phase = "post_drop"
-			phase_mult = 1.3  # leggero respiro dopo l'orgasmo
+			phase_mult = 1.3  # post-drop: leggero respiro dopo l'orgasmo
 		else:
 			# Reset del guard solo quando siamo "deep pre" (prima del buildup,
 			# es. seek indietro o loop) o "deep normal" (post post-drop, ready
@@ -132,6 +128,9 @@ func _next_wave(distance: float) -> Variant:
 		return null
 	return wave_queue.pop_back()
 
+# Le int-division (count/2, w/cols) sono volute: producono offset/index integer
+# per il layout delle wave. Suppressed alla function-scope.
+@warning_ignore("integer_division")
 func _spawn_pattern(w_data: Dictionary, diff: float, screen_size: Vector2) -> void:
 	if not enemy_system:
 		return

@@ -2,6 +2,16 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.5] - 2026-05-08
+
+Hotfix for the boot splash on Pages and a quick warning sweep.
+
+### Fixed
+- **Boot splash had white bands top and bottom on Pages.** Root cause: `boot.svg` has `viewBox="0 0 1280 720"` (16:9) but `boot.png` was rasterized at 1280×1280 (1:1) — `qlmanage -t -s 1280` renders into a square canvas, so the SVG content (which fills only the central 16:9 area via the `<rect width="1280" height="720">`) was surrounded by transparent rows 0–280 and 1000–1280. Godot's web shell `<img id="status-splash">` uses `object-fit: contain` over a black `#status` overlay, but the transparent rows let through the underlying browser bg → visible white bands during loading. Fix: center-cropped `boot.png` to 1280×720 (16:9, exact aspect match with the Godot project canvas). With `boot_splash/fullsize=true` the image now covers the splash overlay edge-to-edge.
+
+### Changed
+- **GDScript warning sweep.** Removed unused `phase: String` local in `WaveDirector.tick` (it was set in branches but never read; the moltiplicatore lives in `phase_mult`). Annotated `_spawn_pattern` with `@warning_ignore("integer_division")` — the `count / 2` and `w / cols` divisions are intentional integer math for layout offsets. Renamed unused `delta` to `_delta` in `UIManager._process`.
+
 ## [0.1.4] - 2026-05-08
 
 Audit pass. Five real issues from a draconian architectural review fixed with rigor, no scope creep.
