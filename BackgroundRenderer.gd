@@ -106,19 +106,28 @@ func _ready():
 	screen_size = get_viewport_rect().size
 
 	# --- LAYER 0: NEBULA SHADER (Colored Universe Background) ---
+	# Z absoluto: il shader output è OPAQUE (alpha=1.0). Senza z_as_relative=false
+	# eredita parent z=-10 e copriva i pianeti (che con relative=true finivano a
+	# effective z=-26 → sotto al nebula → invisibili). Forziamo z assoluto -12
+	# così la nebula è davvero il fondale.
 	nebula_bg = ColorRect.new()
 	nebula_bg.size = screen_size + Vector2(400, 400) # Overscan per evitare bordi neri
 	nebula_bg.position = Vector2(-200, -200)
 	nebula_bg.show_behind_parent = true
+	nebula_bg.z_as_relative = false
+	nebula_bg.z_index = -12
 	var mat = ShaderMaterial.new()
 	mat.shader = preload("res://shaders/nebula.gdshader")
 	nebula_bg.material = mat
 	add_child(nebula_bg)
 
 	# --- LAYER 1.5: PLANET LANDMARKS (real photos, scrolling slow, far) ---
-	# Sits between the nebula and the procedural mid stars.
+	# Z absoluto -6 (sopra nebula -12, sopra le stelle procedurali a z=-10 del
+	# parent _draw, sotto al gameplay -3 e sopra). Senza z_as_relative=false i
+	# sprites finivano a z=-26 e venivano coperti dalla nebula opaca.
 	planet_layer = Node2D.new()
-	planet_layer.z_index = -8
+	planet_layer.z_as_relative = false
+	planet_layer.z_index = -6
 	add_child(planet_layer)
 	for path in PLANET_PATHS:
 		if ResourceLoader.exists(path):
@@ -129,8 +138,12 @@ func _ready():
 
 	# --- LAYER 1.4: DEEP-SPACE LANDMARKS (galaxies, nebulae, blackholes, clusters) ---
 	# Each kind has its own pacing and z-index so they don't collide with planets.
-	# We let each Sprite carry its own z_index from the config, so they parent here.
+	# We let each Sprite carry its own z_index from the config (made absolute in
+	# _spawn_deep_landmark via z_as_relative=false). Container itself is absolute
+	# at z=-9 just to insulate from inheritance accidents.
 	deep_layer = Node2D.new()
+	deep_layer.z_as_relative = false
+	deep_layer.z_index = -9
 	add_child(deep_layer)
 	for kind in DEEP_CONFIGS:
 		var cfg: Dictionary = DEEP_CONFIGS[kind]
@@ -256,13 +269,11 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 	# Cassa = boost momentaneo dello scroll. Pulsa con la traccia.
 	var effective_speed: float = global_speed_multiplier + audio_low * KICK_PARALLAX_BOOST
 
-	# Floor MINIMO per la nebula: il shader ha già il suo bass_baseline=0.6
-	# interno, quindi anche con audio_low=0 le nuvole sono comunque visibili.
-	# Qui aggiungiamo solo un respiro ambient leggero (0.05–0.15) per evitare
-	# che le sezioni silenti sentano "morte". Era 0.20–0.40 e schiacciava
-	# completamente la dinamica reale dell'audio (max(real, floor) → quasi
-	# sempre floor). Adesso l'audio reale domina su ogni beat.
-	var ambient_pulse: float = 0.10 + 0.05 * sin(Time.get_ticks_msec() / 1000.0 * 0.7)
+	# Floor "respiro" sul bass: raise minimo a ~0.15–0.25 per dare un kick
+	# baseline anche nei silenzi assoluti, ma SOTTO i picchi reali dell'audio
+	# (che spesso > 0.4 con il gain × 4 corrente). Il shader ha bass_baseline=2.5
+	# che è la luce sempre-on; il floor qui aggiunge solo una pulsazione lenta.
+	var ambient_pulse: float = 0.20 + 0.08 * sin(Time.get_ticks_msec() / 1000.0 * 0.7)
 	var shader_audio_low: float = max(audio_low, ambient_pulse)
 
 	nebula_time += delta * effective_speed
@@ -394,6 +405,9 @@ func _spawn_deep_landmark(kind: String) -> void:
 
 	var sp := Sprite2D.new()
 	sp.texture = tex
+	# Z absoluto dal config (galaxy/nebula -9, cluster -8, blackhole -7). Sopra
+	# la nebula (-12), sotto i pianeti (-6).
+	sp.z_as_relative = false
 	sp.z_index = int(cfg["z"])
 
 	var body_target: float = float(cfg["body_target"])
@@ -436,7 +450,12 @@ func _spawn_planet() -> void:
 
 	var sp := Sprite2D.new()
 	sp.texture = tex
-	sp.z_index = -8
+	# Z absoluto: senza relative=false ereditava da planet_layer e finiva a -26,
+	# COPERTO dalla nebula opaca → pianeti invisibili nonostante spawnassero
+	# correttamente. Adesso z=-6 li mette sopra la nebula (-12) e sopra le
+	# stelle procedurali (-10).
+	sp.z_as_relative = false
+	sp.z_index = -6
 
 	# Body-relative scaling so all planets occupy the same visual diameter
 	# regardless of bbox (Saturn's rings make its bbox far wider than its body).

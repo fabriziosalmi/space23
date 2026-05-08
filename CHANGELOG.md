@@ -1,61 +1,33 @@
 # Changelog
 
-All notable changes to **SPACE23** will be documented in this file.
+All notable changes to SPACE23 will be documented in this file.
 
-## [0.2.0] - 2026-05-08
-
-### Added
-- **Audio mute toggle (M)** + on-screen indicator.
-- **Threaded music preload**: tracks warmed at boot via `ResourceLoader.load_threaded_request()` so the first play and track switches don't freeze the web build.
-- **Boss HP bar** with "MOTHER SHIP" label, shown only while the boss is alive.
-- **Wave deck shuffling**: patterns drawn from a shuffled deck instead of a fixed `wave_index % size` cycle.
-- **New wave patterns**: `z_pattern`, `swarm`, `tank_v`, `invader_horde`, plus speed-modded variants (`speed_mod` per-wave field).
-- **Track-driven drop event**: at the music drop the screen warps to `WARP_SPEED_MULTIPLIER` *and* spawns an extra swarm, satures the nebula palette, and plays a low-end SFX cue (one-shot per track).
-- **Guaranteed powerup before each boss** (one-shot per track).
-- **Pause (Esc)**: full freeze including `audio_stream_player.stream_paused`, with overlay.
-- **Reduce Effects (E)** for photosensitive players: caps chromatic aberration, removes scanlines, dampens zoom blur, softens HDR hit-flashes from `Color(10,10,10)` to `Color(2.5,2.5,2.5)`. Persisted in `user://space23_settings.json`.
-- **Mobile BOMB FAB** (bottom-right "B" button) bound to a `bomb_pressed` signal.
-- **HUD split**: separate `SCORE` and `DIST` labels (auto km/m formatting) instead of a single conflated number.
-- **InputMap**: 10 named actions (`move_*`, `fire`, `dash`, `bomb`, `mute`, `pause`, `reduce_effects`) registered at boot. No more raw `is_key_pressed(KEY_*)`.
-- **Viewport resize listener** propagates `screen_size` and the PostFX rect on browser/window resize.
-- **Hitbox visualizer** now renders both bullet (5px) and body (15px) hitboxes so the visual matches every collision check.
-
-### Changed
-- **`Main.gd` monolith split** into focused systems under `systems/` (`WaveDirector`, `EnemySystem`, `ProjectileSystem`, `PowerupSystem`, `RailgunSystem`, `BlackHoleSystem`, `ExplosionSystem`, `PostFXController`).
-- **Shaders extracted** out of inline GDScript strings into `shaders/post.gdshader`, `shaders/flame.gdshader`, `shaders/nebula.gdshader`.
-- **Type hints** + `class_name` across `Main`, `Player`, `Audio`, `UI`, `BG`, plus `ClassName.new()` instantiation.
-- **Magic numbers promoted** to named constants (hitboxes, damage, score, flow gain, BH ranges, pool size, difficulty divisor, warp multiplier).
-- **Difficulty curve sigmoidal**: `1 + (DIFFICULTY_MAX - 1) · tanh(distance / DIFFICULTY_DISTANCE_DIVISOR)` — soft cap at 4× instead of unbounded linear.
-- **Godot version aligned to 4.6** in both `project.godot` and the GitHub Actions workflow (4.6.2 export templates).
-- **Nebula** is now visible at all times instead of only flashing at audio peaks.
-- **Title screen** keeps the nebula alive; title text no longer clips.
+## [0.1.1] - 2026-05-08
 
 ### Fixed
-- **Fighter AI stuck in CHARGE**: the global `e.ai_timer += delta` cancelled the `-= delta` in CHARGE, freezing scouts at `ai_timer = 1.0`. Increment now lives only in branches that need a monotonic timer.
-- **`UIManager.update_boss_hp` called but never defined**: implemented + initialized the previously dangling `boss_hp_bar`. First boss spawn no longer crashes.
-- **`e.max_hp` never initialized**: `_spawn_enemy` now stores `max_hp` so the boss HP bar reads a real ratio.
-- **Boss spawned only once per run**: the `has_boss_spawned` flag now resets on track change too, not just on retry.
-- **Drone signature mismatch**: drone fire was passing `Color` where `Vector2` was expected (latent bug exposed once Player got type hints).
-- Removed self-concatenating fragility in `UIManager._input` that mutated `title_label.text` immediately before hiding it.
-- Bomb input switched from `is_key_pressed` (continuous, drained 3 bombs in 3 frames if held) to `is_action_just_pressed`.
+- **Web export had no audio.** Root cause: Godot 4 web export does not route audio buses created at runtime via `AudioServer.add_bus()` (godotengine/godot#115560). Defined the bus layout as a static `default_bus_layout.tres` resource (Master + SpectrumAnalyzer effect at index 0), removed the runtime `add_bus`/`set_bus_send`/`add_bus_effect` calls in `AudioManager._ready()`. Music and SFX now play on Pages.
+- **AudioContext autoplay block.** Browser policy keeps every `AudioContext` suspended until a user gesture; Godot 4.4's canvas-level resume could miss clicks that landed on Control nodes. Added `audio-fix.js` injected via `html/head_include` that hooks the `AudioContext` constructor and resumes any suspended instance from a window-level capture-phase listener.
+- **Game-over → retry left the viewport black.** `_tick_gameover_fx` lerps `pitch_scale → 0.01`, `zoom_blur → 0.4`, `grayscale → 1.0`, camera zoom → 2.5×, none of which were reset on retry. Added an explicit FX reset block in `_on_retry_pressed` covering camera, post-FX, audio, and transient timers (shake, hit-stop, boss lens, bomb buffer).
+- **Same-frame i-frame race.** Collision detectors were only reading `player.is_invincible`, which is computed at the end of the previous `Player._process` frame. Multiple bullets hitting on the same frame all saw stale `false`, removing themselves with full side effects. Added a `hit_iframe_timer > 0` guard in both `EnemySystem` body collision and `ProjectileSystem` bullet/graze checks.
+- **Engine flames did not bob with the ship body.** The three flame `ColorRect` nodes were siblings of `ship_renderer` but only `ship_renderer.position.y` got the `ship_bob` offset. Stashed the flames in an array with their base `y` and apply the same bob each frame.
+- **State machine left at "INTRO" after the 5s intro completed.** `_tick_intro` cleared `is_intro` but never set `game_state = "PLAYING"`, so `toggle_pause()` (gated on `game_state == "PLAYING"`) was a no-op for the entire first playthrough. Set `game_state = "PLAYING"` at intro end.
+- **Mouse-target shake jitter.** `get_global_mouse_position()` includes camera offset; while the camera shook the move-to-mouse target danced with it. Subtract `main_camera.offset` before using.
+- **Planets and deep-space landmarks effectively invisible.** Pacing and spawn-Y math added up to ~50s before the first planet appeared and ~150s for the first galaxy. Tightened intervals, raised initial accumulators, bumped scroll speeds, and moved spawn Y just above the viewport so first landmarks now appear within ~5–10s of starting.
 
-## [0.1.0] - 2026-05-08 — God-Tier Phase
+### Changed
+- **Music tracks: MP3 → OGG Vorbis.** Godot 4 web's MP3 path through minimp3 in WASM is brittle for VBR streams; OGG via libvorbis is the recommended format and decodes cleanly. All six tracks re-encoded at qscale 5; total audio payload 31 MB → 27 MB.
+- **Camera shake model.** Was `randf_range(-1, 1) * shake_intensity` per axis with `lerp` decay. Now Squirrel Eiserloh's trauma model: `offset = trauma² · MAX · noise` with smooth pseudo-Perlin noise (three sin frequencies decorrelated XY) and linear trauma decay. Peaks pop, decay is filmic.
+- **Hit-stop differentiated by enemy "mass".** Was 0 ms on every non-boss kill, 2.0 s on bosses. Now scaled by base HP: 20 ms / 40 ms / 70 ms tiers, boss 1.2 s.
+- **Post-damage i-frames.** A bullet wall could stack damage on the same frame to instantly drain HP. Added a 0.4 s invulnerability window after every hit, with a 30 Hz alpha flash on the ship for visual feedback.
+- **Stereo SFX panning.** Pool of 8 `AudioStreamPlayer` → `AudioStreamPlayer2D` with `attenuation = 0` and `panning_strength = 0.6`, position propagated from each call site (explosion, kill, graze, railgun, powerup, bomb).
+- **Wave director coupled to the music.** Build-up phase (3 s before the drop) lengthens the spawn timer ×1.5; on the drop, force-spawn one wave then keep timer ×0.6 for 1 s of barrage; 3–6 s post-drop, ×1.3 for breathing room.
+- **Visibility hierarchy of the world.** Explicit `z_index` so threat objects (player + enemy bullets) always render above explosions, never the other way around.
+- **Audio-reactive nebula re-tuned.** Spectrum analyzer gain ×2 → ×4; the lower ambient floor relies on the shader's own `bass_baseline` (raised 0.6 → 1.5) so the nebula is always lit independent of audio. Bands are now visually split: bass pumps `c_neb1` (kick = violet pulse), mid pumps `c_neb2` (synth/pad = blue surge), high gives 5× more sparkle plus a white rim on the brightest cloud peaks.
+- **Lateral parallax.** Layers near and the planets/deep-landmarks now drift opposite to `player.velocity.x` with depth-graded factors.
+- **Boss-explosion gravitational lensing.** The black-hole post-FX shader is reused for ~0.4 s on boss kills and smart bombs (curve `t² · 1.6`).
+- **Smart-bomb input buffer.** Press during intro, transition, or hit-stop is no longer eaten — buffered for 180 ms and consumed on the next valid PLAYING frame.
+- **Squared-distance collision checks** in the hot loops (`distance_to → distance_squared_to` where the result is only compared against a constant).
 
-First tagged release.
+## [0.1.0] - 2026-05-07
 
-### Added
-- **Time Dilation**: Implemented Superhot-style mechanics. The universe's `global_speed_multiplier` scales with player input. Standing still freezes time at 0.05x.
-- **Black Hole Powerup (Type 3)**: Spawns an accretion disk that procedurally distorts UV coordinates of the entire screen using a Fragment Shader, sucking in enemies and bullets through an Inverse Square Law logic.
-- **Drone Orbiters (Type 2)**: Companion modules that orbit the player and auto-fire independent of time dilation.
-- **Railgun (Type 1)**: Screen-piercing beam weapon that applies continuous delta damage.
-- **Hit-Stop Mechanics**: Engine execution pauses for micro-intervals upon hits or destructions, adding visceral impact weight.
-- **Audio Granular Synthesis**: Procedural sound effects generated by dynamically pitching and slicing the playing music track.
-- **Advanced AI**: Fighter squad stops to charge spread-shots, Scouts swarm on proximity.
-
-## [Alpha] - Draconian Phase
-
-### Added
-- **Core Engine**: Built the initial procedural scrolling background and layer parallax system.
-- **CRT & Post-Processing**: Added Chromatic Aberration, Vignette, and Lens Pinch shaders.
-- **Dynamic HUD**: Added 90s Arcade Title Screen, name input, and "Fotofinish" Game Over state.
-- **Procedural Player Trails**: Rendered using line arrays based on movement history instead of particle nodes.
+Initial release. Vertical shoot-'em-up in Godot 4, deployed to GitHub Pages. See README for details.

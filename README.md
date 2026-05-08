@@ -1,8 +1,10 @@
 # SPACE23
 
-A small vertical shoot-'em-up that runs in the browser. Click and play, no install. Source is open and every push to `main` is auto-deployed to GitHub Pages.
+[![SPACE23 — click to play](banner.svg)](https://fabriziosalmi.github.io/space23/)
 
-![SPACE23](screenshot.png)
+A small vertical shoot-'em-up that runs in the browser. Click the banner above (or the link below) and play — no install. Source is open and every push to `main` is auto-deployed to GitHub Pages.
+
+![SPACE23 in-game](screenshot.png)
 
 ## Play
 

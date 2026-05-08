@@ -657,6 +657,10 @@ func _tick_intro(delta: float) -> void:
 	target_speed_multiplier = INTRO_SPEED_MULT
 	if intro_timer <= 0:
 		is_intro = false
+		# La state machine deve riflettere PLAYING qui o toggle_pause() resta
+		# bloccato al primo playthrough (gate `game_state != "PLAYING"` → ESC
+		# non pausa finché non muori e fai retry).
+		game_state = "PLAYING"
 		player.can_move = true
 		main_camera.zoom = Vector2(1.0, 1.0)
 		main_camera.position = screen_size / 2.0

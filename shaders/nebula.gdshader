@@ -71,14 +71,15 @@ void fragment() {
 	// while a synth/pad section reads as "blue surge" — each band has its own
 	// visible signature instead of all of them just brightening everything.
 	//
-	// bass_baseline alto (1.5) = nebula sempre visibile anche con audio_low=0,
-	// così le sezioni quiete tra una cassa e l'altra non spegnono il cielo.
-	// Era 0.6: troppo basso con la palette scura (c_neb1 ≈ 0.15-0.3 max channel),
-	// risultato visivo "nebula scompare quando il bass cala".
-	float bass_baseline = 1.5;
+	// bass_baseline 2.5 = nebula sempre VIVIDA anche con audio_low=0. Le palette
+	// del gioco hanno c_neb1/c_neb2 max channel ≈ 0.15–0.45 (dark on purpose),
+	// quindi serve un baseline alto perché la moltiplicazione produca colori
+	// percettibili. A 1.5 sezioni quiete erano ancora troppo dim rispetto al
+	// TITLE (dove fake_pulse cycle a 0.20–0.70 dava bass_glow ≈ 5–7).
+	float bass_baseline = 2.5;
 	float bass_kick = audio_low * audio_low * 16.0;
 	color += c_neb1 * n1 * (bass_baseline + bass_kick);
-	color += c_neb2 * n2 * (bass_baseline * 0.4 + bass_kick * 0.15);
+	color += c_neb2 * n2 * (bass_baseline * 0.5 + bass_kick * 0.15);
 
 	// --- MID — pump c_neb2 + the fine n3 sub-cloud ---
 	// Linear gain on the main n2 cloud (more reactive than just the n3 micro-
