@@ -2,6 +2,13 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.12] - 2026-05-08
+
+### Fixed
+- **Boss (`MOTHERSHIP`) telegraph extended from 100ms to 350ms + charge SFX.** The previous flash window (`shoot_timer < 0.3 and > 0.2` in `_ai_mothership`) was too short to read; the 16-bullet ring fan felt like cheap chaos that the player either dodged by luck or ate by frame. New window `0.45..0.10` (350ms) + a high-pitch (`pitch=2.5`) "charge" SFX played once on entry to the window — `e.get("telegraph_charging", false)` guard prevents per-frame retrigger. Result: visible warning + audible cue → player has time to position, missed dodge is now skill-based.
+- **Intro `5s → 2s`, `WaveDirector.wave_timer 3s → 1s`.** Time to first enemy went from 8s to 3s. The old timing was deadly for a web prototype where "click and immediately see something" is the only way to retain the user past the first second. The intro was originally 5s of cinematic camera pull; 2s is enough to read the title fade-out without overstaying its welcome.
+- **Cursor hidden during gameplay (`PLAYING` + `INTRO`); visible in `TITLE` / `GAMEOVER` / `PAUSE`.** Standard arrow cursor was visible during gameplay (annoying on desktop) and during the Game Over screen (anti-aesthetic over the neon UI). New `Main._set_cursor_hidden(bool)` helper called at state transitions. Mouse-driven gameplay still works — Godot tracks `get_global_mouse_position()` regardless of cursor visibility, so the ship continues to follow the (now-invisible) cursor when LMB is held. On touch / mobile the call is a no-op (no system cursor).
+
 ## [0.1.11] - 2026-05-08
 
 ### Fixed
