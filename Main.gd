@@ -668,9 +668,10 @@ func _process(delta: float) -> void:
 		world_env.environment.glow_intensity = 1.8
 
 	# Background scroll (con kick→parallasse boost interno a BackgroundRenderer).
-	# Passiamo player.velocity.x: il bg laterale shifta in direzione opposta per
-	# dare un senso di profondità reattivo al movimento del giocatore.
-	bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.velocity.x)
+	# Passiamo player.position.x: il BackgroundRenderer calcola un viewport
+	# offset position-keyed (smoothato + clampato) e ogni layer shifta in base
+	# al proprio depth factor → parallasse vero (non più velocity-driven).
+	bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.position.x)
 
 	# Distance + HUD (DIST + KILLS separati così il punteggio kill non viene
 	# sommerso dalla distance dopo 1 minuto di gioco).

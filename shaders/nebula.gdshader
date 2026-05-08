@@ -17,6 +17,13 @@ uniform float scroll_time = 0.0;
 uniform float audio_low = 0.0;
 uniform float audio_mid = 0.0;
 uniform float audio_high = 0.0;
+// Lateral parallax: viewport_offset_x / screen_width passed by GDScript.
+// Multiplied by 0.05 (DEPTH_NEBULA) before being applied to sample UVs — the
+// nebula is the deepest layer, so the shift is barely perceptible (max ~1.2%
+// of UV at full player extension). Matches the position-keyed parallax of the
+// CPU layers and sprites; without this the nebula would feel locked to the
+// camera while everything in front slid past.
+uniform float lateral_offset = 0.0;
 
 vec2 random2(vec2 p) {
 	return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
@@ -91,6 +98,12 @@ vec3 starfield_layer(vec2 uv, float density, float appear_thr, float core_radius
 }
 
 void fragment() {
+	// Lateral shift applied uniformly to all sample UVs (clouds, starfields,
+	// streaks). Positive `lateral_offset` (player right of centre) → sample
+	// further right in the texture → cloud appears to drift left on screen,
+	// matching the parallax of layers in front.
+	float lat = lateral_offset * 0.05;
+
 	vec2 uv = UV;
 	// Direzione: `-= scroll_time` shifta il sample DOWN ⇒ pattern visibile
 	// si muove DOWN (illusione "ship moves forward"). Stessa correzione
@@ -98,6 +111,7 @@ void fragment() {
 	// fbm() sotto sono state flippate per mantenere la differential drift
 	// inter-octave senza riportare le nuvole nella vecchia direzione UP.
 	uv.y -= scroll_time * 0.05;
+	uv.x += lat;
 
 	// Two main cloud octaves (bass-driven). Y-component delle additional
 	// time-offsets invertita rispetto alla vecchia versione: n1 add `-0.05`,
@@ -153,10 +167,12 @@ void fragment() {
 	// e delle comete (che vanno giù).
 	vec2 star_uv1 = UV;
 	star_uv1.y -= scroll_time * 0.04;
+	star_uv1.x += lat;
 	color += starfield_layer(star_uv1, 140.0, 0.985, 0.035, 3.5) * (0.7 + audio_mid * 0.4);
 
 	vec2 star_uv2 = UV;
 	star_uv2.y -= scroll_time * 0.10;
+	star_uv2.x += lat;
 	color += starfield_layer(star_uv2, 75.0, 0.992, 0.05, 5.0) * 1.2 * (0.8 + audio_high * 0.5);
 
 	// --- SPEED STREAKS — sottili linee verticali "warp" che vendono velocità ---
@@ -166,6 +182,7 @@ void fragment() {
 	// di direzione delle starfield: `-=` per scrollare DOWN.)
 	vec2 streak_uv = UV;
 	streak_uv.y -= scroll_time * 0.18;
+	streak_uv.x += lat;
 	vec2 streak_cell = floor(streak_uv * vec2(160.0, 35.0));
 	float streak_h = hash21(streak_cell + 5.7);
 	float streak_visible = step(0.992, streak_h);

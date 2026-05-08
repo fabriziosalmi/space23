@@ -31,6 +31,24 @@ const PLANET_SCROLL_SPEED: float = 22.0   # slow drift — landmarks come and go
 # of in-game distance under default time dilation).
 const REFERENCE_SCROLL_SPEED: float = 100.0
 
+# ===== Strip / parallax (Phase 1.5: position-keyed lateral camera) =====
+# Universe is rendered in a "strip" wider than the viewport. The viewport's
+# horizontal centre tracks a smoothed `player.position.x`; each layer slides
+# laterally by a depth-scaled fraction of the player's offset from centre.
+# Result: real depth cue (closer layers move more) — replaces the prior
+# velocity-driven `lateral_factor_*` shifts that drifted at sub-pixel rates.
+const STRIP_WIDTH_MULT: float = 1.4   # 1280 viewport → 1792 strip
+const LATERAL_LERP_RATE: float = 4.0  # per-second smoothing toward target offset
+# Per-layer depth factors. 1.0 = full parallax (matches player motion); 0.0 =
+# infinite distance (no parallax). Values from bg_v2.md §4.1, with two extra
+# tiers for the CPU draw layers between deep and foreground.
+const DEPTH_NEBULA: float = 0.05         # nebula shader UV offset
+const DEPTH_DEEP: float = 0.20           # galaxy / nebula / BH / cluster sprites + CPU layer_deep
+const DEPTH_LAYER_MID: float = 0.30      # mid procedural stars
+const DEPTH_PLANET: float = 0.45         # planet sprites
+const DEPTH_LAYER_NEAR: float = 0.50     # near constellation + bright stars
+const DEPTH_FOREGROUND: float = 0.85     # CPU layer_top (asteroids, comets, foreground planets)
+
 # Deep-space landmarks (galaxies, nebulae, blackholes, clusters). Each kind has
 # its own pacing and visual treatment. They share the planet shader so they
 # inherit the per-track palette tint and bass pulse.
@@ -101,9 +119,26 @@ var deep_distance_accum: Dictionary = {}
 
 var screen_size: Vector2
 
+# Strip / parallax state. `viewport_offset_x` is the smoothed lateral camera
+# position in *strip-relative* coords: 0 = strip centred on viewport, +N = the
+# viewport is N px right of centre (i.e. layers shift left by N*depth on
+# screen). Clamped to ±max_player_offset so the strongest layer (DEPTH_FOREGROUND)
+# never exposes the strip's hard edges.
+var strip_width: float = 0.0
+var strip_pad: float = 0.0
+var max_player_offset: float = 0.0
+var viewport_offset_x: float = 0.0
+
 func _ready():
 	z_index = -10
 	screen_size = get_viewport_rect().size
+	strip_width = screen_size.x * STRIP_WIDTH_MULT
+	strip_pad = (strip_width - screen_size.x) * 0.5
+	# Foreground layer at depth d shifts by d * |player_offset| px on screen. To
+	# keep its content inside the strip we need d_max * |player_offset| ≤ strip_pad,
+	# i.e. |player_offset| ≤ strip_pad / d_max. Default: 256 / 0.85 ≈ 301 px —
+	# roughly half-screen of player travel before parallax saturates.
+	max_player_offset = strip_pad / DEPTH_FOREGROUND
 
 	# --- LAYER 0: NEBULA SHADER (Colored Universe Background) ---
 	# Z absoluto: il shader output è OPAQUE (alpha=1.0). Senza z_as_relative=false
@@ -188,6 +223,16 @@ func clear_landmarks() -> void:
 		deep_distance_accum[kind] = float(DEEP_CONFIGS[kind]["interval_px"]) * f
 	planet_sequence = 0
 
+# Map a strip-anchored x to the screen-space x for a layer of given depth.
+# Strip coords range over [0, strip_width]; screen coords over [0, screen_w].
+# When viewport_offset_x = 0 the strip is centred on the viewport, so a body
+# at strip_x = strip_width/2 renders at screen_w/2. As the player moves right,
+# viewport_offset_x grows positive and layers shift left by depth * offset —
+# stronger for foreground (DEPTH_FOREGROUND), barely visible for deep layers
+# (DEPTH_DEEP), invisible for the nebula (handled in shader at DEPTH_NEBULA).
+func _strip_to_screen_x(strip_x: float, depth: float) -> float:
+	return strip_x - strip_pad - viewport_offset_x * depth
+
 func _init_layers():
 	# Densità ridotta: prima ~120 elementi tra stars+flares+constellations →
 	# percepiti come "rumore". Ora ~50 totali, distribuiti per dare profondità
@@ -199,7 +244,7 @@ func _init_layers():
 	for i in range(2):
 		layer_deep.append({
 			"type": "galaxy",
-			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
+			"strip_x": randf_range(-200, strip_width + 200), "pos": Vector2(0.0, randf() * screen_size.y),
 			"speed": randf_range(2.0, 5.0),
 			"size": randf_range(5.0, 10.0),
 			"angle": randf() * PI * 2.0,
@@ -209,7 +254,7 @@ func _init_layers():
 	for i in range(5):
 		layer_deep.append({
 			"type": "flare",
-			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
+			"strip_x": randf_range(-200, strip_width + 200), "pos": Vector2(0.0, randf() * screen_size.y),
 			"speed": randf_range(2.0, 6.0),
 			"pulse_offset": randf() * PI * 2.0,
 			"pulse_speed": randf_range(0.5, 1.0)
@@ -221,20 +266,22 @@ func _init_layers():
 	# velocità in foreground) + una costellazione cosmetica.
 	for i in range(8):
 		layer_mid.append({
-			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
+			"strip_x": randf_range(-200, strip_width + 200), "pos": Vector2(0.0, randf() * screen_size.y),
 			"speed": randf_range(40.0, 90.0),
 			"brightness": randf_range(0.20, 0.40)
 		})
 
 	var num_stars = randi() % 4 + 3
-	var c_pos = Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y)
+	var c_strip_x: float = randf_range(-200, strip_width + 200)
+	var c_pos_y: float = randf() * screen_size.y
 	var speed = randf_range(2.0, 8.0)
 	var stars = []
 	for s in range(num_stars):
 		stars.append(Vector2(randf_range(-200, 200), randf_range(-200, 200)))
 	layer_near.append({
 		"type": "constellation",
-		"pos": c_pos,
+		"strip_x": c_strip_x,
+		"pos": Vector2(0.0, c_pos_y),  # pos.x recomputed each frame from strip_x
 		"speed": speed,
 		"stars": stars,
 		"brightness": randf_range(0.35, 0.6)
@@ -242,7 +289,7 @@ func _init_layers():
 	for i in range(6):
 		layer_near.append({
 			"type": "star",
-			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
+			"strip_x": randf_range(-200, strip_width + 200), "pos": Vector2(0.0, randf() * screen_size.y),
 			"speed": randf_range(120.0, 220.0),
 			"brightness": randf_range(0.40, 0.75)
 		})
@@ -251,7 +298,7 @@ func _init_layers():
 	for i in range(2):
 		layer_top.append({
 			"type": "planet",
-			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
+			"strip_x": randf_range(-200, strip_width + 200), "pos": Vector2(0.0, randf() * screen_size.y),
 			"speed": randf_range(30.0, 50.0),
 			"radius": randf_range(30.0, 60.0),
 			"color": Color(randf_range(0.1, 0.3), randf_range(0.1, 0.3), randf_range(0.2, 0.4), 0.7),
@@ -275,22 +322,31 @@ func _init_layers():
 			})
 		layer_top.append({
 			"type": "asteroid_group",
-			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
+			"strip_x": randf_range(-200, strip_width + 200), "pos": Vector2(0.0, randf() * screen_size.y),
 			"speed": randf_range(80.0, 120.0),
 			"asteroids": asteroids
 		})
 	for i in range(2):
 		layer_top.append({
 			"type": "comet",
-			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
+			"strip_x": randf_range(-200, strip_width + 200), "pos": Vector2(0.0, randf() * screen_size.y),
 			"speed": randf_range(300.0, 500.0),
 			"dir": Vector2(randf_range(-0.5, 0.5), 1.0).normalized(),
 			"length": randf_range(80.0, 150.0)
 		})
 
-func update_background(delta: float, global_speed_multiplier: float, c_bg: Color, c_neb1: Color, c_neb2: Color, audio_low: float, audio_mid: float, audio_high: float = 0.0, player_vel_x: float = 0.0):
+func update_background(delta: float, global_speed_multiplier: float, c_bg: Color, c_neb1: Color, c_neb2: Color, audio_low: float, audio_mid: float, audio_high: float = 0.0, player_x: float = -1.0):
 	# Cassa = boost momentaneo dello scroll. Pulsa con la traccia.
 	var effective_speed: float = global_speed_multiplier + audio_low * KICK_PARALLAX_BOOST
+
+	# Lateral camera: smoothed track of player offset from viewport centre.
+	# Clamped so DEPTH_FOREGROUND * |offset| ≤ strip_pad — the strongest-parallax
+	# layer never exposes the strip's hard edges. `player_x = -1` is the sentinel
+	# for "no player" (TITLE state) → strip-centred, no lateral motion.
+	var target_offset: float = 0.0
+	if player_x >= 0.0:
+		target_offset = clamp(player_x - screen_size.x * 0.5, -max_player_offset, max_player_offset)
+	viewport_offset_x = lerp(viewport_offset_x, target_offset, LATERAL_LERP_RATE * delta)
 
 	# Floor "respiro" sul bass: raise minimo a ~0.15–0.25 per dare un kick
 	# baseline anche nei silenzi assoluti, ma SOTTO i picchi reali dell'audio
@@ -308,6 +364,10 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 		nebula_bg.material.set_shader_parameter("c_bg", Vector3(c_bg.r, c_bg.g, c_bg.b))
 		nebula_bg.material.set_shader_parameter("c_neb1", Vector3(c_neb1.r, c_neb1.g, c_neb1.b))
 		nebula_bg.material.set_shader_parameter("c_neb2", Vector3(c_neb2.r, c_neb2.g, c_neb2.b))
+		# Normalised lateral offset for the shader's UV shift. The shader
+		# multiplies by DEPTH_NEBULA internally → cloud / starfield drift
+		# barely perceptibly when the player leans laterally.
+		nebula_bg.material.set_shader_parameter("lateral_offset", viewport_offset_x / screen_size.x)
 
 	# Planet landmarks: drive their tint from the current palette and let them
 	# pulse on the bass. Per il pacing/scroll usiamo un floor disaccoppiato dal
@@ -318,40 +378,37 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 	current_palette_tint = Vector3(c_neb1.r, c_neb1.g, c_neb1.b)
 	last_audio_low = audio_low
 	var parallax_speed: float = max(global_speed_multiplier, 0.4) + audio_low * KICK_PARALLAX_BOOST
-	_tick_planets(delta, parallax_speed, player_vel_x)
-	_tick_deep_landmarks(delta, parallax_speed, player_vel_x)
+	_tick_planets(delta, parallax_speed)
+	_tick_deep_landmarks(delta, parallax_speed)
 
-	# Scroll. Per dare un senso di profondità reattivo al movimento del player,
-	# shiftiamo i layer più "vicini" in direzione opposta a player.velocity.x.
-	# Fattori scelti empiricamente: il layer mid (lontano) si muove pochissimo,
-	# il near di più, il top molto poco perché contiene corpi celesti grandi
-	# (pianeti/asteroidi/comete) che con drift forte stonano.
-	# Max shift @ MAX_SPEED=700: mid ~0.07 px/frame, near ~0.4 px/frame, top ~0.14.
-	var lateral_factor_mid: float = 0.0001
-	var lateral_factor_near: float = 0.0006
-	var lateral_factor_top: float = 0.0002
+	# CPU layers: each entry stores `strip_x` (anchor in strip coords) and `pos`
+	# (cached render position). Y scrolls per-frame as before; X is recomputed
+	# every frame from `strip_x` and the layer's depth factor — replaces the
+	# old velocity-keyed `lateral_factor_*` drift, which accumulated sub-pixel
+	# shifts that drifted unboundedly when the player held a direction.
 	var all_layers = [layer_deep, layer_mid, layer_near, layer_top]
-	var lateral_factors = [0.0, lateral_factor_mid, lateral_factor_near, lateral_factor_top]
+	var depths: Array = [DEPTH_DEEP, DEPTH_LAYER_MID, DEPTH_LAYER_NEAR, DEPTH_FOREGROUND]
 	var li: int = 0
 	for layer in all_layers:
-		var lat_shift: float = -player_vel_x * lateral_factors[li] * delta * 60.0
+		var depth: float = depths[li]
 		for e in layer:
-			if e.has("dir"): # E' una cometa
-				e.pos += e.dir * e.speed * effective_speed * delta
-				if e.pos.y > screen_size.y + 200 or e.pos.x < -200 or e.pos.x > screen_size.x + 200:
+			if e.has("dir"): # comet — moves freely in strip space
+				e.strip_x += e.dir.x * e.speed * effective_speed * delta
+				e.pos.y += e.dir.y * e.speed * effective_speed * delta
+				if e.pos.y > screen_size.y + 200 or e.strip_x < -200 or e.strip_x > strip_width + 200:
 					e.pos.y = -200
-					e.pos.x = randf_range(-200, screen_size.x + 200)
+					e.strip_x = randf_range(-200, strip_width + 200)
 			else:
 				e.pos.y += e.speed * effective_speed * delta
-				e.pos.x += lat_shift
 				if e.pos.y > screen_size.y + 150:
 					e.pos.y = -150
-					e.pos.x = randf_range(-200, screen_size.x + 200)
+					e.strip_x = randf_range(-200, strip_width + 200)
+			e.pos.x = _strip_to_screen_x(e.strip_x, depth)
 
-			if e.has("rot"): # E' un asteroide
+			if e.has("rot"): # asteroid (single)
 				e.rot += e.rot_speed * effective_speed * delta
 
-			if e.has("asteroids"): # E' un gruppo di asteroidi
+			if e.has("asteroids"): # asteroid group
 				for ast in e.asteroids:
 					ast.rot += ast.rot_speed * effective_speed * delta
 		li += 1
@@ -365,16 +422,23 @@ func _has_visible_landmark() -> bool:
 	# "Visible" = sprite gia parzialmente in viewport o sta per entrare. Range
 	# generoso (-500..screen+300) perche i landmark sono ora 400-800 px → il
 	# guard deve considerare lo sprite come "visibile" anche con il centro
-	# fuori viewport, finche i bordi sono dentro.
+	# fuori viewport, finche i bordi sono dentro. Con la strip 1.4× alcuni
+	# sprite possono essere parcheggiati off-screen-X (a strip_x agli estremi):
+	# li escludiamo dal guard così un landmark visibile-solo-se-leani non
+	# blocca lo spawn della prossima landmark on-axis.
 	for c in planet_layer.get_children():
-		if c is Sprite2D and c.position.y > -500 and c.position.y < screen_size.y + 300:
+		if c is Sprite2D \
+				and c.position.y > -500 and c.position.y < screen_size.y + 300 \
+				and c.position.x > -300 and c.position.x < screen_size.x + 300:
 			return true
 	for c in deep_layer.get_children():
-		if c is Sprite2D and c.position.y > -500 and c.position.y < screen_size.y + 300:
+		if c is Sprite2D \
+				and c.position.y > -500 and c.position.y < screen_size.y + 300 \
+				and c.position.x > -300 and c.position.x < screen_size.x + 300:
 			return true
 	return false
 
-func _tick_planets(delta: float, effective_speed: float, player_vel_x: float = 0.0) -> void:
+func _tick_planets(delta: float, effective_speed: float) -> void:
 	# Accumulate "distance traveled" for planet spawn pacing.
 	planet_distance_accum += effective_speed * REFERENCE_SCROLL_SPEED * delta
 
@@ -388,20 +452,24 @@ func _tick_planets(delta: float, effective_speed: float, player_vel_x: float = 0
 			planet_distance_accum -= PLANET_INTERVAL_PX
 			_spawn_planet()
 
-	# Lateral parallax shift dei pianeti (layer "lontano" → factor piccolo).
-	# 0.00015 al MAX_SPEED 700 = ~6 px/sec, percepibile ma non distrae.
-	var lat_shift: float = -player_vel_x * 0.00015 * delta * 60.0
-
-	# Drive existing planets: scroll + slight horizontal drift + per-frame
+	# Drive existing planets: scroll + slight strip-space drift + per-frame
 	# shader uniforms (palette tint follows current track, bass pulses size).
+	# X is recomputed every frame from the planet's `strip_x` anchor → lateral
+	# parallax follows player position with depth factor DEPTH_PLANET (0.45),
+	# replacing the prior velocity-driven shift that drifted unboundedly.
 	for child in planet_layer.get_children():
 		var sp := child as Sprite2D
 		if sp == null:
 			continue
 		var sc_speed: float = float(sp.get_meta("scroll_speed", PLANET_SCROLL_SPEED))
 		var x_drift: float = float(sp.get_meta("x_drift", 0.0))
+		var anchor: float = float(sp.get_meta("strip_x", strip_width * 0.5))
+		# x_drift advances the strip-anchor (slow horizontal "crossing" feel) —
+		# kept in strip space so the parallax framing remains consistent.
+		anchor += x_drift * delta
+		sp.set_meta("strip_x", anchor)
 		sp.position.y += sc_speed * effective_speed * delta
-		sp.position.x += x_drift * delta + lat_shift
+		sp.position.x = _strip_to_screen_x(anchor, DEPTH_PLANET)
 
 		if sp.material:
 			sp.material.set_shader_parameter("tint", current_palette_tint)
@@ -410,7 +478,7 @@ func _tick_planets(delta: float, effective_speed: float, player_vel_x: float = 0
 		if sp.position.y > screen_size.y + 450:
 			sp.queue_free()
 
-func _tick_deep_landmarks(delta: float, effective_speed: float, player_vel_x: float = 0.0) -> void:
+func _tick_deep_landmarks(delta: float, effective_speed: float) -> void:
 	# Per-kind distance accumulators → independent pacing. Anche qui guard di
 	# esclusività: se c'è già una landmark in viewport (planet o deep), questo
 	# spawn viene posticipato. Cap dell'accumulator a interval per evitare burst.
@@ -424,18 +492,20 @@ func _tick_deep_landmarks(delta: float, effective_speed: float, player_vel_x: fl
 				deep_distance_accum[kind] -= interval
 				_spawn_deep_landmark(kind)
 
-	# Lateral parallax dei deep landmarks (layer più lontano dei pianeti).
-	var lat_shift: float = -player_vel_x * 0.00008 * delta * 60.0
-
-	# Update active deep landmarks: scroll, drift, palette tint per frame.
+	# Update active deep landmarks: scroll, strip-space drift, per-frame shader
+	# uniforms. X recomputed every frame from `strip_x` anchor at DEPTH_DEEP
+	# (0.20) — gentle lateral parallax, deep landmarks read as far away.
 	for child in deep_layer.get_children():
 		var sp := child as Sprite2D
 		if sp == null:
 			continue
 		var sc_speed: float = float(sp.get_meta("scroll_speed", 20.0))
 		var x_drift: float = float(sp.get_meta("x_drift", 0.0))
+		var anchor: float = float(sp.get_meta("strip_x", strip_width * 0.5))
+		anchor += x_drift * delta
+		sp.set_meta("strip_x", anchor)
 		sp.position.y += sc_speed * effective_speed * delta
-		sp.position.x += x_drift * delta + lat_shift
+		sp.position.x = _strip_to_screen_x(anchor, DEPTH_DEEP)
 		if sp.material:
 			sp.material.set_shader_parameter("tint", current_palette_tint)
 			sp.material.set_shader_parameter("audio_low", last_audio_low)
@@ -463,14 +533,15 @@ func _spawn_deep_landmark(kind: String) -> void:
 	var scale_factor: float = (body_target / tex_w) * size_jitter
 	sp.scale = Vector2(scale_factor, scale_factor)
 
-	# Spread across screen with margin so the body doesn't clip; randomized.
-	# Spawn ry alta (-450..-600) perché i landmark adesso sono giganti (body
-	# fino a 800 px). Con half_height ~400, ry=-500 mette il bottom del sprite
-	# a y=-100 (appena sopra il viewport): il landmark "scivola dentro" pulito.
+	# Spread across the *strip* (1.4× viewport) with margin. Spawn ry alta
+	# (-450..-600) perché i landmark adesso sono giganti (body fino a 800 px).
+	# Con half_height ~400, ry=-500 mette il bottom del sprite a y=-100 (appena
+	# sopra il viewport): il landmark "scivola dentro" pulito.
 	var margin: float = 220.0
-	var rx: float = randf_range(margin, screen_size.x - margin)
+	var rx_strip: float = randf_range(margin, strip_width - margin)
 	var ry: float = -randf_range(450, 600)
-	sp.position = Vector2(rx, ry)
+	sp.set_meta("strip_x", rx_strip)
+	sp.position = Vector2(_strip_to_screen_x(rx_strip, DEPTH_DEEP), ry)
 	sp.modulate = cfg["modulate"]
 	sp.rotation = randf_range(-0.4, 0.4)  # slight tilt — these are not "facing camera"
 
@@ -512,16 +583,18 @@ func _spawn_planet() -> void:
 	var scale_factor: float = (PLANET_BODY_TARGET_PX / body_w) * size_jitter
 	sp.scale = Vector2(scale_factor, scale_factor)
 
-	# Spread X across the full screen width with margin so the planet body
-	# doesn't clip the edge. Bias odd/even spawns toward opposite halves to
-	# avoid stacking columns.
-	var half: float = screen_size.x * 0.5
+	# Spread X across the full *strip* width (1.4× viewport) with margin so the
+	# planet body doesn't clip the strip edge. Bias odd/even spawns toward
+	# opposite halves to avoid stacking columns. With the wider strip, planets
+	# can spawn off-axis (visible only when player leans sideways) — the doc's
+	# "explorable on a small scale" payoff.
+	var half: float = strip_width * 0.5
 	var margin: float = 180.0
-	var rx: float
+	var rx_strip: float
 	if planet_sequence % 2 == 0:
-		rx = randf_range(margin, half - 40)
+		rx_strip = randf_range(margin, half - 40)
 	else:
-		rx = randf_range(half + 40, screen_size.x - margin)
+		rx_strip = randf_range(half + 40, strip_width - margin)
 
 	# Y entry jitter — spawn ben sopra il viewport perché il pianeta è enorme
 	# (body 600 + jitter scale = sprite ~600-700 px). ry=-400 lascia il bottom
@@ -529,10 +602,12 @@ func _spawn_planet() -> void:
 	var ry: float = -randf_range(380, 500)
 
 	# A slow horizontal drift gives the impression they're crossing the scene
-	# rather than scrolling vertically in lockstep.
+	# rather than scrolling vertically in lockstep. Drift advances the strip
+	# anchor (see _tick_planets), not the screen-space position directly.
 	var x_drift: float = randf_range(-12.0, 12.0)
 
-	sp.position = Vector2(rx, ry)
+	sp.set_meta("strip_x", rx_strip)
+	sp.position = Vector2(_strip_to_screen_x(rx_strip, DEPTH_PLANET), ry)
 	# Modulate quasi-bianco con leggera tinta perla; alpha 0.32 (-15% del giro
 	# precedente): planet ancora più "fondale".
 	sp.modulate = Color(0.92, 0.91, 0.96, 0.32)
