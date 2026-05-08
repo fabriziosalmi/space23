@@ -69,10 +69,10 @@ Tweak points:
 
 ## Credits
 
-- **Music** composed and produced with [Suno AI](https://suno.com), using a custom v5.5 model fine-tuned on my own tracks. More of my music under the Space Invaders alias at [soundcloud.com/spaceinvaders](https://soundcloud.com/spaceinvaders).
+- **Music** composed and produced with Suno AI, using a custom v5.5 model fine-tuned on my own tracks. More of my music under the Space Invaders alias at [soundcloud.com/spaceinvaders](https://soundcloud.com/spaceinvaders).
 - **Background imagery** (planets, galaxy, nebula, cluster, black hole): generated with Gemini's image model.
 - **Code** written by Gemini and Claude under my orchestration.
-- **Inspiration**: the original Space Invaders, and Space Invaders 23 — the freetekno collective I belong to. Hence the name.
+- **Inspiration**: the original Space Invaders, and Space Invaders Tekno Sound — the freetekno collective I belong to. Hence the name.
 
 ## What's next
 
