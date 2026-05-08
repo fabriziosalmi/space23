@@ -2,6 +2,11 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.10] - 2026-05-08
+
+### Fixed
+- **Three correlated kill-flow bugs closed by extracting `Main.handle_enemy_kill(e)`.** Kill FX/score/hit-stop logic was duplicated between `ProjectileSystem._kill_enemy_at` and `RailgunSystem._kill_enemy` (~30 LOC each, already drifting); a third damage source — `BlackHoleSystem` absorption — relied on `EnemySystem`'s `hp<=0` cleanup branch to remove dead enemies, which is a *silent* path (designed for fighters that escape off-top, not for kills). Net player-facing impact: **(1)** boss killed via railgun got normal kill treatment instead of dramatic finish — 250 score instead of 5250 (`SCORE_PER_BOSS + SCORE_PER_KILL`), 0.05 s hit-stop instead of 1.2 s, no boss lensing, no `+100` shake; **(2)** anything killed by black-hole absorption was silently culled — zero score, no explosion, no SFX, so `BH` was effectively a zero-score powerup; **(3)** boss killed by black-hole absorption (rare but reachable since `BH_ABSORB_RADIUS` damage is 100 hp/frame) silently disappeared with no FX at all. The new helper centralises the boss-vs-normal branching: boss path runs the super-explosion + boss-kill SFX + lensing + score, normal path runs the standard explosion + base-hp-bracketed hit-stop. `BlackHoleSystem.tick` was converted from forward to reverse iteration so absorb-kill can `remove_at(ei)` in-place instead of leaving a zombie enemy for one frame; gains a `main` ref wired in `Main._ready`. `RailgunSystem` layers its flavor SFX (pitch 1.5) on top of the centralised kill so the railgun-specific audio cue survives the refactor. Net `-39 LOC`, `+3` bugs closed, `+1` reusable seam.
+
 ## [0.1.9] - 2026-05-08
 
 ### Added
