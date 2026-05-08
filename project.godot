@@ -15,8 +15,14 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="Space23"
+config/description="Music-driven vertical shoot-'em-up. Click to play."
 run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
+config/icon="res://saturn.png"
+boot_splash/show_image=true
+boot_splash/image="res://screenshot.png"
+boot_splash/bg_color=Color(0, 0, 0, 1)
+boot_splash/use_filter=true
 
 [display]
 
@@ -35,3 +41,17 @@ buses/default_bus_layout="res://default_bus_layout.tres"
 [rendering]
 
 environment/defaults/default_clear_color=Color(0, 0, 0, 1)
+# Free win 1: 2D MSAA 2× — smussa la geometria procedurale (nave, ali,
+# asteroidi, costellazioni). Costo trascurabile in 2D; fa la differenza
+# sui contorni delle polyline HDR.
+anti_aliasing/quality/msaa_2d=1
+# Free win 2: Screen-space FXAA — cattura i bordi residui dello shader
+# output. ~0.5ms sul web, tutta la nebula resta soft.
+anti_aliasing/quality/screen_space_aa=1
+# Free win 3 (CRITICO per local-vs-web): HDR rendering anche su WebGL
+# Compatibility. Senza questo, i colori HDR (cockpit (2.5,0.8,3.5),
+# explosion (10,10,10), bullet (0.2,1.5,3.0)) vengono CLIPPATI a 1.0 in
+# Compatibility → bloom non triggera, web sembra "spento" rispetto al
+# Forward+ desktop. Con questo, HDR è preservato e il glow funziona
+# uniformemente.
+viewport/hdr_2d=true
