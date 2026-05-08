@@ -67,6 +67,43 @@ Each chunk is a **curated composition**:
 
 The session experience: discrete recognisable acts, looped without feeling looped.
 
+### 4.1 Strip dimensions — wider than the viewport
+
+A strip's logical width is **greater than the viewport**, recommended default `1.4×` (a 1280-wide screen reads from a 1792-wide strip). The viewport's horizontal centre tracks a smoothed `player.position.x`; the strip slides laterally under the screen. The payoff is twofold:
+
+- **Real multi-layer parallax.** Each layer shifts laterally by its own fraction of the player's offset from centre. The skeleton already exists in `BackgroundRenderer` as `lateral_factor_mid / near / top`, but with values like `0.0001 – 0.0006` the effect is fractional pixels per frame — sub-perceptual. With a wider strip, those factors can grow by an order of magnitude without exposing strip edges. Recommended starting depths:
+
+  | Layer | Depth factor | Visible shift at `MAX_SPEED` |
+  |---|---|---|
+  | Nebula shader (innermost) | `0.05` | barely perceptible |
+  | Deep landmarks (galaxy, BH) | `0.20` | gentle |
+  | Planets | `0.45` | clear |
+  | Foreground asteroids / comets | `0.85` | strong |
+  | (Player) | `1.0` | reference |
+
+  Applied as `layer_offset_x = -player_offset_from_centre * depth_factor`. The resulting per-layer differential reads as physical depth.
+
+- **Off-axis composition.** With every body having to fit inside `[0, screen_w]` and look balanced regardless of where the player sits, today's chunks can only frame bodies near horizontal centre. With lateral room, a strip can place a galaxy at strip-x `0.18`, a black hole at `0.84`, a nebula filling `0.30 – 0.95` — and the player only fully *uncovers* that composition by leaning into the side. Strips become explorable on a small scale.
+
+Practical bounds: below `1.2×` the parallax payoff disappears; above `1.6×` the player at MAX_SPEED with `depth_factor = 0.85` can see strip edges. `1.4×` keeps the visible region inside the strip across all layer factors above.
+
+### 4.2 Track alignment — one strip per track
+
+Strip boundaries align with **track endings**, not with internal track structure (drop, post-drop, …). Mapping is **one strip per track**:
+
+- `audio_manager.playlist[i]` ↔ `chunk_provider.chunks[i]`
+- `audio_manager.is_transitioning` (the existing track-end gate) → triggers `BackgroundDirector.begin_transition()`
+- The 5 s track-transition gap subdivides cleanly as `0 – 2 s` strip fade-out, `2 – 3 s` black, `3 – 5 s` next strip fade-in. The player perceives **one** break (the music handing off and the universe handing off, in lockstep), not two layered ones.
+
+Why not strip-changes mid-track: a strip transition is a 2 s fade-to-black. Inserting one mid-track is a discontinuity the music does not motivate. Inserting one *only* at the track gap uses time the player is already perceiving as "between things".
+
+Implication for strip length: a strip needs to last at least one track. With current tracks (1.5 – 3 min) and `gsm = 1.0` baseline, that's a distance budget of roughly **1500 – 3500 distance units** per strip. The strip is **not** fixed-length — it ends when its track ends. The author composes for the expected track length plus a 30 % buffer of filler:
+
+- If authored events finish before the track does, a `deep_transit` tail-loop kicks in (uniform deep-space starfield + occasional comet, no landmarks). It's intentionally low-density so the strip can extend by minutes without recognisable repeats.
+- If the track ends before the authored events finish, unplayed events are skipped. Skip pressure is reduced by composing the most "important" events early in the chunk's distance budget.
+
+This also resolves a previously open question: chunk pacing is **distance-keyed internally** (events fire at the distance the player crosses) but **track-keyed externally** (the strip's lifecycle is the track's lifecycle).
+
 ## 5. Three architectural approaches
 
 ### Option A — Extend the current ad-hoc spawner
@@ -129,9 +166,11 @@ Main
 `BackgroundDirector` owns:
 
 - **Window**: events whose distance is in `[player_dist - 200, player_dist + 1500]` are alive.
-- **Materialisation**: events become `Sprite2D` (or `ColorRect` with shader, for distortions) on entering the window; `queue_free()` on exit.
-- **Transitions**: when crossing a chunk boundary, kicks a `ChunkTransition` (fade-to-black post-FX, briefly damps audio reactivity, primes the next chunk's palette).
-- **Reset**: when the playlist exhausts, transitions, then loops to chunk 0 with a cosmetically different palette tint.
+- **Materialisation**: events become `Sprite2D` (or `ColorRect` with shader, for distortions) on entering the window. Each event carries a `strip_x` in `[0, strip_width]` (wider than viewport — see §4.1); render position is `(strip_x - viewport_offset_x * layer.depth_factor, distance_y)`. `queue_free()` on exit.
+- **Lateral camera**: `viewport_offset_x` is a smoothed lerp of `(player.position.x - screen_w / 2)`. Each layer reads it scaled by its own `depth_factor` (table in §4.1). The nebula shader receives a `lateral_offset` uniform applied to the cloud / starfield UVs at `0.05 ×` the player offset.
+- **Track binding**: subscribes to `audio_manager.is_transitioning`. On track gap, calls `begin_transition()`, advances the chunk pointer, primes the next chunk's palette and `width_multiplier`. The 5 s track-transition window is the strip-transition window — same animation curve (see §4.2).
+- **Tail-loop / skip**: when authored events for the active strip exhaust before the track ends, falls back to a `deep_transit` filler (uniform sparse starfield + comets at low rate). When the track ends with unplayed events queued, they're discarded.
+- **Loop**: when `chunk_provider` runs out of chunks, it cycles back to chunk 0 with an optional palette permutation; the player perceives the loop as a colour shift, not a structural reset.
 
 `ChunkProvider` is the seam where Option C plugs in later — static array today, model later.
 
@@ -164,7 +203,7 @@ To keep this concrete, what to produce now:
 | black hole | 512 × 512 | accretion disc; intentionally smaller than nebulae |
 | structure / station | 256 × 512 | optional: human-built objects, vertical orientation |
 
-Sizes are **target** — Godot scales freely; oversize sources lose nothing visually but cost VRAM and download size on web. Keep total bg PNG payload under ~5 MB compressed.
+Sizes are **target** — Godot scales freely; oversize sources lose nothing visually but cost VRAM and download size on web. Keep total bg PNG payload under ~5 MB compressed. The wider strip (§4.1) does **not** require larger source PNGs — it just gives bodies a wider canvas to be *placed in*. A nebula meant to fill the screen vertically still wants `1024 × 1024`; a galaxy framed off-axis at strip-x `0.18` is still a `768 × 768`.
 
 ### Sources
 
@@ -216,9 +255,11 @@ Phased, each phase shippable on its own:
 
 **Phase 0** *(this PR / next release)* — Document the plan, freeze the current background as v1, fix the cloud direction bug. **Done.**
 
-**Phase 1** — Add `BackgroundChunk` and `BackgroundEvent` resources. Add `BackgroundDirector` with a `StaticChunkPlaylist` containing **a single chunk that reproduces today's behaviour** (`legacy_random_drift`). Replace the spawners in `BackgroundRenderer` with calls into the director. No visible change. Tests confirm distance-based pacing identical to v1. *Risk: low. Output: same look, new pipeline.*
+**Phase 1** — Add `BackgroundChunk` and `BackgroundEvent` resources (with `width_multiplier`, `palette`, `events[]`, `shader_override`). Add `BackgroundDirector` with a `StaticChunkPlaylist` containing **a single chunk that reproduces today's behaviour** (`legacy_random_drift`, `width_multiplier = 1.0`, no lateral camera). Replace the spawners in `BackgroundRenderer` with calls into the director; subscribe to `audio_manager.is_transitioning` for the track-aligned transition. No visible change. Tests confirm distance-based pacing identical to v1. *Risk: low. Output: same look, new pipeline, track binding wired up.*
 
-**Phase 2** — Compose the first real chunk by hand: `00_solar_system_sweep.tres`. Slot it into the playlist as the second chunk. Player runs through `legacy_random_drift` for a track, then `00_solar_system_sweep`, then loops. *Risk: low. Output: first themed segment lands.*
+**Phase 1.5** — Wire lateral camera. Director computes `viewport_offset_x` from `player.position.x`. Apply per-layer depth factors (start with the §4.1 table). Bump `legacy_random_drift.width_multiplier` to `1.4` and let the existing sprites place freely in the wider strip. *Risk: medium — first visually-novel change. Output: the parallax that the current `lateral_factor_*` constants only hint at.*
+
+**Phase 2** — Compose the first real chunk by hand: `00_solar_system_sweep.tres`, `width_multiplier = 1.4`. Slot it into the playlist matching `audio_manager.playlist[0]`. Tail-loop `deep_transit` filler if the track length exceeds the authored events. *Risk: low. Output: first themed strip aligned 1:1 with first track.*
 
 **Phase 3** — Compose remaining chunks (5 more). Each is a half-day of design + tuning. Drop `legacy_random_drift` once chunk 0 – 5 cover full session length. *Risk: time. Output: full v2 experience.*
 
@@ -228,10 +269,13 @@ Phased, each phase shippable on its own:
 
 ## 9. Open questions
 
-- **Chunk length**: 30 s feels right at default speed (`gsm = 1.0`). With `gsm` scaling, real time varies. Should chunks measure in **distance** (decoupled from time-dilation) or **time** (predictable cadence)? Prior art: I'd argue distance, so the SuperHot mechanic doesn't stretch a chunk to 90 s while standing still.
-- **Audio coupling**: should chunks align to track structure (chunk N = track N's drop, etc.) or be independent? Aligning gives narrative cohesion (the nebula dive *is* track 3). Independence keeps replays varied. Recommend independence with optional per-chunk palette pinning.
+- ~~**Chunk length / time vs distance**~~ — resolved in §4.2: distance-keyed internally, track-keyed externally.
+- ~~**Audio coupling**~~ — resolved in §4.2: 1:1 with the playlist, transitions ride the existing 5 s track gap.
 - **Per-chunk shader variants**: the nebula shader is one fullscreen pass today. A chunk like `04_black_hole_vicinity` may want a custom shader (lensing, distortion). Plan: a chunk can declare an optional `shader_override` Resource; the director swaps the ColorRect material for the duration of the chunk and restores it on exit.
 - **VRAM budget on web**: 30 PNGs at ~512 px average ≈ ~30 MB uncompressed in VRAM. With Godot's lossless texture import, the download is ~5 – 8 MB. Acceptable. Lossy compression would shave another 50 % at the cost of banding on smooth nebulae — not worth it.
+- **Lateral parallax tuning**: the depth-factor table in §4.1 (`0.05 / 0.20 / 0.45 / 0.85`) is a starting estimate. Real values come from a debug overlay (toggle a wireframe of strip + viewport sample window) and a/b feel testing. Per-chunk overrides are cheap (just a few floats in the chunk Resource) if a specific scene wants a different depth distribution — e.g. `04_black_hole_vicinity` may want flatter parallax to keep the BH near-static.
+- **Strip width per chunk**: `1.4×` is the proposed default but may not suit every theme. A `02_nebula_dive` strip filled with foreground filaments may want `1.2×` (tighter feel, more claustrophobic); a `05_galactic_arm_traverse` may want `1.6×` (open, panoramic). Make `width_multiplier` a per-chunk Resource field with sensible default.
+- **Filler character**: `deep_transit` is intentionally minimal so it can extend by minutes without repeats, but the player may notice the *transition into* filler as "things got quiet, did the game break?". Mitigation: filler picks up the **chunk's own palette** so the colour stays continuous; only the event density drops. If still perceptible, escalate to per-chunk filler variants.
 
 ---
 
