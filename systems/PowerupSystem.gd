@@ -19,6 +19,14 @@ var screen_size: Vector2 = Vector2.ZERO
 
 func spawn(pos: Vector2, type_idx: int) -> void:
 	powerups.append({ "pos": pos, "type": type_idx })
+	# "Qualcosa è apparso" tell: anello in espansione di colore matchato al
+	# tipo, 0.4s, 50px raggio target. Subliminale — il giocatore non lo nota
+	# coscientemente, ma se manca la scena sembra "morta" (powerup pop in
+	# silenzio in mezzo al caos). Colore × 0.6 per tenerlo soft (gli HDR
+	# pieni dei tipi sarebbero invadenti come anello).
+	if explosion_system:
+		var c: Color = _color_for_type(type_idx) * 0.6
+		explosion_system.spawn_ring(pos, c, 50.0)
 
 func tick(delta: float) -> void:
 	if not is_instance_valid(player):
@@ -63,18 +71,23 @@ func _apply_pickup(p: Dictionary) -> void:
 			if bh_system:
 				bh_system.spawn(p.pos)
 
+func _color_for_type(type_idx: int) -> Color:
+	# Single source of truth per i colori powerup — usato sia dal _draw che
+	# dallo spawn-ring tell. Match con type_idx: 0=heal, 1=railgun, 2=drones,
+	# 3=blackhole.
+	match type_idx:
+		0: return Color(0.2, 2.5, 0.5)   # Medkit verde
+		1: return Color(3.0, 0.5, 3.0)   # Railgun magenta
+		2: return Color(0.5, 3.0, 3.0)   # Drones cyan
+		3: return Color(4.0, 0.5, 4.0)   # Black Hole violet
+		_: return Color(1.0, 1.0, 1.0)
+
 func _draw() -> void:
 	for p in powerups:
-		match p.type:
-			0:  # Medkit
-				draw_circle(p.pos, 8.0, Color(0.2, 2.5, 0.5))
-				draw_circle(p.pos, 4.0, Color(1.0, 1.0, 1.0))
-			1:  # Railgun viola
-				draw_circle(p.pos, 8.0, Color(3.0, 0.5, 3.0))
-				draw_circle(p.pos, 4.0, Color(1.0, 1.0, 1.0))
-			2:  # Drones azzurro
-				draw_circle(p.pos, 8.0, Color(0.5, 3.0, 3.0))
-				draw_circle(p.pos, 4.0, Color(1.0, 1.0, 1.0))
-			3:  # Black Hole nero con bordo viola HDR
-				draw_circle(p.pos, 8.0, Color(0.0, 0.0, 0.0))
-				draw_circle(p.pos, 4.0, Color(4.0, 0.5, 4.0))
+		var c: Color = _color_for_type(p.type)
+		if p.type == 3:  # Black Hole: nero al centro + bordo viola HDR
+			draw_circle(p.pos, 8.0, Color(0.0, 0.0, 0.0))
+			draw_circle(p.pos, 4.0, c)
+		else:
+			draw_circle(p.pos, 8.0, c)
+			draw_circle(p.pos, 4.0, Color(1.0, 1.0, 1.0))

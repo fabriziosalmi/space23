@@ -37,6 +37,17 @@ var boss_hp_bar: ProgressBar
 var boss_hp_label: Label
 var arcade_font
 
+# HUD pulse-on-increment: brevissimo bump di luminosità (modulate brightness)
+# quando KILLS / BOMBS cambiano. Sells "questa cifra è viva, è appena cambiata"
+# senza rumore visivo. DIST cresce ogni frame → niente pulse (sarebbe constant).
+# Modulate è moltiplicativo sul font_color: 1.6× pulse + decay 100ms triggera
+# bloom HDR sui label colorati (yellow KILLS, orange BOMBS) per ~1 frame.
+var _prev_kill_score: int = -1
+var _prev_bombs: int = -1
+const HUD_PULSE_DURATION: float = 0.10
+var _kill_pulse_t: float = 0.0
+var _bomb_pulse_t: float = 0.0
+
 func _ready():
 	arcade_font = preload("res://PressStart2P.ttf")
 	layer = 101
@@ -290,13 +301,32 @@ func _on_pause_overlay_input(event: InputEvent) -> void:
 	elif event is InputEventScreenTouch and event.pressed:
 		pause_toggle_requested.emit()
 
-func _process(_delta):
+func _process(delta):
 	if title_label.visible:
 		var time = Time.get_ticks_msec() / 1000.0
 		# Blink effettivo su "PRESS ENTER TO START" se volessimo,
 		# ma facciamo pulsare dolcemente i colori
 		var pulse = (sin(time * 5.0) + 1.0) * 0.5
 		title_label.add_theme_color_override("font_color", Color(1.0, 0.2 + pulse * 0.6, 0.6 + pulse * 0.4))
+
+	# HUD pulse decay. Brightness curve: ramp-up rapido (lineare) per i primi
+	# 30% del timer, poi decay. Picco ~1.6× verso quando il timer è quasi
+	# completo (nuovo frame), poi tiepido.
+	if _kill_pulse_t > 0.0:
+		_kill_pulse_t = max(_kill_pulse_t - delta, 0.0)
+		var k: float = _kill_pulse_t / HUD_PULSE_DURATION  # 1.0 → 0.0
+		var b: float = 1.0 + 0.6 * k
+		kill_label.modulate = Color(b, b, b)
+	elif kill_label.modulate != Color.WHITE:
+		kill_label.modulate = Color.WHITE
+
+	if _bomb_pulse_t > 0.0:
+		_bomb_pulse_t = max(_bomb_pulse_t - delta, 0.0)
+		var k: float = _bomb_pulse_t / HUD_PULSE_DURATION
+		var b: float = 1.0 + 0.6 * k
+		bomb_label.modulate = Color(b, b, b)
+	elif bomb_label.modulate != Color.WHITE:
+		bomb_label.modulate = Color.WHITE
 
 func _input(event):
 	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch):
@@ -351,6 +381,15 @@ func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, 
 	dist_label.text = "DIST  %dm" % distance_m
 	kill_label.text = "KILLS  %d" % kill_score
 	bomb_label.text = "BOMBS: " + str(bombs)
+
+	# Pulse on increment. Skip the very first frame (when prev = -1) so the
+	# initial HUD show non triggera un pulse.
+	if _prev_kill_score >= 0 and kill_score > _prev_kill_score:
+		_kill_pulse_t = HUD_PULSE_DURATION
+	_prev_kill_score = kill_score
+	if _prev_bombs >= 0 and bombs != _prev_bombs:
+		_bomb_pulse_t = HUD_PULSE_DURATION
+	_prev_bombs = bombs
 
 	if flow >= 1.0:
 		flow_label.text = "MAX FLOW!"

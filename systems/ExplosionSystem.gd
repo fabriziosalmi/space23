@@ -41,6 +41,21 @@ func spawn(pos: Vector2, color: Color, scale_mod: float, is_super: bool = false)
 		})
 	explosions.append(ex)
 
+# Ring-only spawn (zero shards): usato per "tell" cues — powerup drop, future
+# spawn anticipations. Sfrutta il pipeline di shockwave esistente con shards
+# vuoti, niente codice di rendering nuovo. Vita più corta (0.4s vs 0.4-1.5s)
+# e radius target esplicito così l'animazione finisce dove vogliamo.
+func spawn_ring(pos: Vector2, color: Color, max_radius: float, life: float = 0.4) -> void:
+	explosions.append({
+		"pos": pos,
+		"color": color,
+		"life": life,
+		"max_life": life,
+		"is_super": false,
+		"shards": [],  # niente: ring-only
+		"shockwaves": [{ "radius": 0.0, "speed": max_radius / life }]
+	})
+
 func tick(delta: float) -> void:
 	for i in range(explosions.size() - 1, -1, -1):
 		var ex: Dictionary = explosions[i]

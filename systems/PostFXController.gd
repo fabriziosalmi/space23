@@ -60,6 +60,12 @@ func set_ship_uv(uv: Vector2) -> void:
 	if rect and rect.material:
 		rect.material.set_shader_parameter("ship_uv", uv)
 
+# Damage edge glow. Driven da Main.damage_flash_timer (decay 200ms post-hit).
+# 0 = niente, 1 = picco. Tinta rossa applicata solo ai bordi dello schermo.
+func set_damage_flash(v: float) -> void:
+	if rect and rect.material:
+		rect.material.set_shader_parameter("damage_flash", v)
+
 func get_zoom_blur() -> float:
 	if rect and rect.material:
 		var v = rect.material.get_shader_parameter("zoom_blur")

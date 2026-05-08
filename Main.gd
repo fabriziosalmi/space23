@@ -103,6 +103,19 @@ const BOSS_LENS_DURATION: float = 0.4
 var boss_lens_timer: float = 0.0
 var boss_lens_pos: Vector2 = Vector2.ZERO
 
+# Damage edge glow. Triggerato da damage_player (~200ms decay), letto dal post
+# shader come `damage_flash` uniform. Tinta rossa solo ai bordi → "ho preso
+# danno" leggibile in periferia senza ostruire il combattimento al centro.
+const DAMAGE_FLASH_DURATION: float = 0.20
+var damage_flash_timer: float = 0.0
+
+# Heartbeat di basso HP. Quando hp < 25 spara una micro-SFX a ~70 bpm. Pitch
+# basso (0.4) e volume basso (-15dB): "il tuo cuore batte, sei ferito" non
+# urla ma è presente. Si stacca quando guarisci o muori.
+const HEARTBEAT_HP_THRESHOLD: float = 25.0
+const HEARTBEAT_PERIOD: float = 0.857  # 60/70 bpm
+var heartbeat_timer: float = 0.0
+
 # Input buffer per la bomb: se la pressione cade in uno stato non-PLAYING
 # (intro, transition, hit-stop, gameover prima del retry), la "memorizziamo"
 # per un breve window e la consumiamo al primo frame di PLAYING valido.
@@ -542,6 +555,8 @@ func damage_player(amount: float) -> void:
 	# audio l'evento più importante del gameplay (player perso HP). Pan dalla
 	# pos del player. Distinto dai SFX kill nemico (pitch 0.5/0.8).
 	audio_manager.play_sfx(0.4, 0.0, player.position)
+	# Edge red glow: 200ms in periferia. Letto dal post shader.
+	damage_flash_timer = DAMAGE_FLASH_DURATION
 	if player_hp <= 0 and game_state != "GAMEOVER":
 		trigger_game_over()
 
@@ -699,6 +714,21 @@ func _process(delta: float) -> void:
 		_check_boss_spawn()
 		wave_director.tick(delta, distance, screen_size)
 
+	# Damage edge-glow decay (post shader uniform). 200ms da hit a zero.
+	if damage_flash_timer > 0.0:
+		damage_flash_timer = max(damage_flash_timer - delta, 0.0)
+
+	# Heartbeat di basso HP. Solo durante PLAYING reale (non during transition,
+	# non during gameover). Periodo 70 bpm. SFX pitch 0.4 + vol -15dB → grave
+	# e quieto, percepito come pulsazione di tensione.
+	if game_state == "PLAYING" and player_hp > 0.0 and player_hp < HEARTBEAT_HP_THRESHOLD:
+		heartbeat_timer -= delta
+		if heartbeat_timer <= 0.0:
+			heartbeat_timer = HEARTBEAT_PERIOD
+			audio_manager.play_sfx(0.4, -15.0, player.position)
+	else:
+		heartbeat_timer = 0.0  # reset quando guarisci / muori / non in playing
+
 	# Sistemi di gioco
 	projectile_system.tick(delta)
 	enemy_system.tick(delta)
@@ -840,6 +870,7 @@ func _check_boss_spawn() -> void:
 func _update_post_fx() -> void:
 	post_fx.set_flow(flow_state)
 	post_fx.set_audio_bass(audio_manager.audio_low)
+	post_fx.set_damage_flash(damage_flash_timer / DAMAGE_FLASH_DURATION)
 
 	# Radial blur driven by shake_intensity — same trauma signal that does the
 	# physical shake. Net effect: small physical shake + bigger visual blur

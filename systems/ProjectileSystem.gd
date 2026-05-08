@@ -120,9 +120,17 @@ func _tick_player_bullets(delta: float, black_holes: Array) -> void:
 				e.hp -= Main.PLAYER_BULLET_DAMAGE
 				hit = true
 				e.hit_flash = 0.1
-				explosion_system.spawn(b.pos, Color(0.5, 1.0, 2.0), 0.3)
 				if e.hp <= 0:
+					# Kill: handle_enemy_kill spawna la sua esplosione orange
+					# scale 1.0 + boss FX. Niente bullet-hit cyan extra → meno
+					# rumore visivo "ho colpito" sopra il "ho ucciso".
 					_kill_enemy_at(j, e)
+				else:
+					# Non-letale: micro-spark cyan al punto di impatto. Scale
+					# 0.15 (era 0.3 sia su hit che kill — overkill per il
+					# sub-evento "hit"). Sells "ho colpito ma non ucciso"
+					# senza eclissare il vero kill.
+					explosion_system.spawn(b.pos, Color(0.5, 1.0, 2.0), 0.15)
 				break
 		if hit:
 			player_bullets.remove_at(i)

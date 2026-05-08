@@ -22,6 +22,10 @@ uniform float radial_blur = 0.0;
 // sottostante viene "deformato leggermente" da questa V, come da intent).
 // Default 0.05 = top ~5% wider del bottom. 0.0 disattiva.
 uniform float perspective_fan = 0.05;
+// Damage flash: tinta rossa solo ai bordi dello schermo, decay 200ms da Main.
+// Soft (mix factor 0.4 al picco × edge_mask) — sells "ho preso danno" senza
+// ostacolare leggibilità del centro dove c'è la nave.
+uniform float damage_flash = 0.0;
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
@@ -126,6 +130,15 @@ void fragment() {
 			}
 			rb *= 0.2;
 			color = mix(color, rb, radial_blur * mask);
+		}
+
+		// 7. Damage flash: tinta rossa SOLO ai bordi (mask = smoothstep di dist
+		// dal centro). damage_flash decay 200ms in Main.damage_player. Picco
+		// reale ~17% mix ai corner. Centro intoccato → la nave + bullet
+		// restano leggibili anche durante l'effetto.
+		if (damage_flash > 0.0) {
+			float edge_mask = smoothstep(0.5, 1.0, dist);
+			color = mix(color, vec3(1.0, 0.05, 0.05), edge_mask * damage_flash * 0.5);
 		}
 
 		COLOR = vec4(color, 1.0);
