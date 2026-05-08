@@ -19,11 +19,13 @@ config/description="Music-driven vertical shoot-'em-up. Click to play."
 run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://saturn.png"
-# Boot splash off — la screenshot.png mostrava gameplay reale invece dell'idea
-# "solo la nave procedurale che brilla". Per ora black-screen pulito durante
-# il boot. Follow-up possibile: PNG dedicato della nave.
-boot_splash/show_image=false
+# Boot splash: la nave procedurale che brilla su nero. boot.png è una
+# rasterizzazione di boot.svg disegnato matching le coordinate del
+# ship_renderer reale (NOSE, WINGS, ENGINES) con glow filter.
+boot_splash/show_image=true
+boot_splash/image="res://boot.png"
 boot_splash/bg_color=Color(0, 0, 0, 1)
+boot_splash/use_filter=true
 
 [display]
 
