@@ -53,6 +53,12 @@ var is_invincible = false
 const HIT_IFRAME_DURATION: float = 0.4
 var hit_iframe_timer: float = 0.0
 
+# Hit flash: brevissimo "lampo bianco" sul corpo all'impatto (≈80ms). Diverso
+# dall'iframe alpha-flicker: questo è una saturazione luminosa istantanea,
+# letta dal cervello come "ho preso il colpo". Triggerato da Main.damage_player.
+const HIT_FLASH_DURATION: float = 0.08
+var hit_flash_timer: float = 0.0
+
 var weapon_type = 0 # 0=normal, 1=railgun
 var drone_active = false
 var drone_angle = 0.0
@@ -151,8 +157,14 @@ func _on_trail_draw():
 		trail_node.draw_circle(p1, 6.0, Color(1.0, 0.5, 3.0))
 		trail_node.draw_circle(p2, 6.0, Color(1.0, 0.5, 3.0))
 
+# Trigger del hit flash. Chiamato da Main.damage_player quando il player viene
+# colpito. Visibile come bagliore bianco istantaneo (~80ms) sovrapposto al body.
+func trigger_hit_flash() -> void:
+	hit_flash_timer = HIT_FLASH_DURATION
+
 # Disegna la nave proceduralmente: fusoliera + ali (con lighting L/R modulato dal
-# roll per un fake-3D), cockpit HDR, trim neon e luci di posizione port/starboard.
+# roll per un fake-3D), cockpit HDR audio-reattivo, trim neon che pulsa col bass,
+# luci di posizione port/starboard.
 func _on_ship_draw() -> void:
 	if not ship_renderer:
 		return
@@ -163,12 +175,37 @@ func _on_ship_draw() -> void:
 	var lit_brightness: float = 0.85 + light_bias * 0.4
 	var shadow_brightness: float = 0.85 - light_bias * 0.4
 
+	# === Reattività audio + HP (live-modulated colors) ===
+	# Tier-1 polish: il trim neon pulsa coi bass, il cockpit cambia colore e
+	# pulse-rate a HP basso. Letture difensive: se Main/AudioManager non sono
+	# pronti, default 0/full. Niente NPE in caso di edge timing.
+	var audio_low_now: float = 0.0
+	var hp_ratio: float = 1.0
+	var parent_node = get_parent()
+	if parent_node:
+		if parent_node.get("audio_manager") != null:
+			audio_low_now = parent_node.audio_manager.audio_low
+		if parent_node.get("player_hp") != null:
+			hp_ratio = clamp(float(parent_node.player_hp) / parent_node.PLAYER_HP_MAX, 0.0, 1.0)
+	# 1.0 idle → ~1.55 a peak audio_low. Sotto soglia bloom = pulsazione neon
+	# leggera. Sopra → trim "vibra" sui kick.
+	var trim_glow_mult: float = 1.0 + audio_low_now * 0.55
+	# Cockpit health pulse: full HP = magenta steady; basso HP = rosso allarme
+	# che lampeggia veloce. Pulse rate cresce da 4Hz a 18Hz, amp da 0.15 a 0.6.
+	var hp_low: float = 1.0 - hp_ratio
+	var cockpit_pulse_rate: float = 4.0 + hp_low * 14.0
+	var cockpit_pulse: float = sin(time_passed * cockpit_pulse_rate)
+	var cockpit_amp: float = 0.15 + hp_low * 0.45
+	var cockpit_brightness: float = 1.0 + cockpit_pulse * cockpit_amp
+	var cockpit_color_full: Color = Color(2.5, 0.8, 3.5)   # magenta sano
+	var cockpit_color_dying: Color = Color(3.5, 0.5, 0.5)  # rosso allarme
+
 	var hull_base: Color = Color(0.32, 0.40, 0.55)
 	var wing_lit: Color = Color(0.45, 0.55, 0.75) * lit_brightness
 	var wing_shadow: Color = Color(0.18, 0.22, 0.32) * shadow_brightness
-	var trim: Color = Color(0.4, 1.4, 3.0)         # Neon blue (HDR)
-	var trim_dim: Color = Color(0.2, 0.7, 1.5)
-	var cockpit_glow: Color = Color(2.5, 0.8, 3.5) # Magenta (HDR)
+	var trim: Color = Color(0.4, 1.4, 3.0) * trim_glow_mult        # Neon blue (HDR + audio)
+	var trim_dim: Color = Color(0.2, 0.7, 1.5) * trim_glow_mult
+	var cockpit_glow: Color = cockpit_color_full.lerp(cockpit_color_dying, hp_low) * cockpit_brightness
 	var nav_red: Color = Color(3.0, 0.4, 0.4)
 	var nav_green: Color = Color(0.4, 3.0, 0.6)
 
@@ -305,6 +342,9 @@ func _process(delta):
 	# Tick i-frame timer post-damage; consuma indipendentemente dal dash.
 	if hit_iframe_timer > 0.0:
 		hit_iframe_timer = max(hit_iframe_timer - delta, 0.0)
+	# Hit flash decay (timer ~80ms, fast).
+	if hit_flash_timer > 0.0:
+		hit_flash_timer = max(hit_flash_timer - delta, 0.0)
 
 	if is_dashing:
 		dash_timer -= delta # Real time! Il dash fotte il tempo
@@ -334,13 +374,17 @@ func _process(delta):
 	# il retry usa is_invincible solo come marker, non lo legge.)
 	is_invincible = is_dashing or hit_iframe_timer > 0.0
 
-	# Flash visivo durante i-frame: la nave lampeggia rapidamente (~10 Hz) così
-	# il giocatore percepisce visivamente la finestra di immunità.
+	# Modulate combinato: alpha flicker per i-frame + RGB brightness boost
+	# per hit flash. modulate è moltiplicativo: a 3× brightness il cockpit HDR
+	# saturatissimo esplode di bloom = "lampo da impatto" istantaneo.
 	if ship_renderer:
+		var iframe_alpha: float = 1.0
 		if hit_iframe_timer > 0.0:
-			ship_renderer.modulate.a = 0.35 + 0.65 * abs(sin(hit_iframe_timer * 30.0))
-		else:
-			ship_renderer.modulate.a = 1.0
+			iframe_alpha = 0.35 + 0.65 * abs(sin(hit_iframe_timer * 30.0))
+		var flash_b: float = 1.0
+		if hit_flash_timer > 0.0:
+			flash_b = 1.0 + (hit_flash_timer / HIT_FLASH_DURATION) * 2.5
+		ship_renderer.modulate = Color(flash_b, flash_b, flash_b, iframe_alpha)
 	
 	# Effetto rollio in 2D (inclina lo sprite)
 	var target_roll = input_dir.x * 0.25 # inclinazione max

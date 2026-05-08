@@ -480,6 +480,8 @@ func damage_player(amount: float) -> void:
 	# (il check `not player.is_invincible` nei collision detector vedrà true
 	# dal prossimo proiettile in poi finché il timer non scade).
 	player.hit_iframe_timer = player.HIT_IFRAME_DURATION
+	# Brief white-flash pulse sul body (~80ms) = feedback istantaneo "hit!"
+	player.trigger_hit_flash()
 	if player_hp <= 0 and game_state != "GAMEOVER":
 		trigger_game_over()
 
