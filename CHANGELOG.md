@@ -2,6 +2,42 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.3] - 2026-05-08
+
+Polish pass. Big visual upgrade for the nebula and the ship; a few real bugs surfaced in a draconian audit; the camera shake stops feeling like a quake.
+
+### Fixed
+- **Spectrum analyzer dead on Pages → nebula didn't react to music.** Godot 4 web export's `AudioEffectSpectrumAnalyzer` returns near-zero magnitudes despite audio playing. Added a synthesised fallback beat derived from `audio_stream_player.get_playback_position()` (130 BPM, sharp kick + rolling mid + rapid high). `audio_low/mid/high = max(real, synth)` — desktop spectrum dominates, web synth carries.
+- **`_ai_invader` never fired after spawn.** The line `e.shoot_timer -= delta` was missing, so all invader-class enemies (types 4 / 6 / 7) had a frozen timer that never reached the `<= 0` threshold. Three enemy patterns moved decoratively without ever shooting.
+- **Fighter leak on LEAVE state.** `_ai_fighter` flies off the top of the screen and self-marks `e.hp = 0`, but the cleanup predicate only caught `pos.y > screen + 100` (off the bottom). The dead fighter stayed in the enemies array indefinitely. Cleanup widened to also catch `hp <= 0` and `pos.y < -300`.
+- **Comet loop reset visible.** The two procedural comets in `BackgroundRenderer` wrap-around when off-screen, but at full opacity right up to the boundary the teleport itself flashed. Added an 80 px edge alpha fade — the loop becomes imperceptible.
+- **Boot splash regression.** Replaced the gameplay-screenshot splash with a hand-written SVG of just the ship matching `Player.gd` `ship_renderer` coordinates, rasterized at 1280×1280, wired with `boot_splash/fullsize=true` so it fills the viewport instead of leaving a white slab on the right.
+- **GDScript parse error from `fract()`** in the synth fallback (GLSL function used in GDScript) — script failed to load → audio dead until fixed (`fmod(beat, 1.0)`).
+- **Bus layout self-loop.** A defensive `bus/0/send = &"Master"` added to `default_bus_layout.tres` was a routing self-loop that broke the bus on web export. Reverted.
+- **WebGL early-return safety.** `starfield_layer` in `nebula.gdshader` had two `return vec3(0.0)` early exits, fragile in WebGL 2 / GLSL ES 3. Refactored to a single return path with `step()` providing the visibility mask. Same treatment for the radial-blur sample loop in `post.gdshader`: pulled outside the inner non-uniform branch so `texture()` derivatives stay well-defined.
+
+### Changed
+- **Camera shake → soft contour.** `CAMERA_SHAKE_MAX 22 → 10` (~-88% from v0.1.1's 80). The visual punch now arrives via a new screen-space radial blur masked around the ship; the camera offset is just a gentle sussulto.
+- **Radial blur masked on the ship.** New `ship_uv` and `radial_blur` uniforms in `post.gdshader`. 5-tap blur along `(uv - ship_uv)` modulated by `smoothstep(0.18, 0.55, dist_ship)` (aspect-corrected so the calm zone is circular). Driven by `shake_intensity / CAMERA_SHAKE_MAX`, so every `add_shake` call site (kill, hit, bomb drop, boss kill) gets the punch for free without the camera moving.
+- **Procedural-shader starfield in `nebula.gdshader`.** Replaced most of the CPU procedural-array stars with two GPU starfield layers built from a hashed cell grid. Loops perfectly via UV.y modulo, twinkles via `sin(time · twinkle_hz + phase)`, per-star colour from a 4-bin distribution (white-warm / pale-blue / pale-yellow / pink), audio-reactive amplitude. CPU arrays trimmed to a small foreground "speed streak" layer.
+- **Speed streaks layer.** Sparse vertical lines in `nebula.gdshader` (~0.8% coverage on a 160×35 grid), scrolling at 4× starfield speed, intensity modulated by `audio_low`. Subtle but the brain reads them as warp-speed motion.
+- **Landmark sizes / opacity / staggering.** Sizes -15% (planet 380 → 320, galaxy 480 → 410, nebula 520 → 440, blackhole 380 → 320, cluster 280 → 240). Modulate brought near neutral white with a faint colour hint (no more "scala di grigi" feel). Single-landmark guard preserved. Initial deep-landmark accumulators now staggered deterministically (cluster 0.85 → galaxy 0.65 → nebula 0.45 → blackhole 0.25) so the four kinds spawn at distinct times.
+- **Project setting free wins.** `anti_aliasing/quality/msaa_2d=1` (2× MSAA — smooths the procedural ship/wings/asteroids/etc.), `anti_aliasing/quality/screen_space_aa=1` (FXAA), `viewport/hdr_2d=true` (allows HDR colours to survive into the bloom pass on WebGL Compatibility — likely the largest local-vs-Pages visual gap closer).
+- **Static `default_bus_layout.tres`.** Audio bus layout now a static resource (Master + SpectrumAnalyzer effect at index 0) instead of being created at runtime via `AudioServer.add_bus()`. Godot 4 web export does not route runtime-added buses; this was the root cause of the no-audio-on-Pages bug.
+- **AudioContext autoplay unlock.** New `audio-fix.js` loaded from `<head>` via `html/head_include` hooks the `AudioContext` constructor and resumes any suspended instance from a window-level capture-phase listener — robust against Godot 4.4's canvas-only resume sometimes missing clicks that landed on Control nodes.
+
+### Added
+- **Live-modulated ship.** Three small additions to `Player._on_ship_draw`:
+  - **Hit flash** — ~80 ms white burst on damage. HDR cockpit and neon trim flare into bloom; reads instantly as "I just got hit" without competing with the 400 ms i-frame alpha flicker.
+  - **Audio-reactive trim glow** — neon edges multiplied by `(1 + audio_low * 0.55)` live. Trim breathes with the bass without needing a shader on the body.
+  - **Cockpit health pulse** — at full HP, magenta steady at 4 Hz amplitude 0.15 (ambient breath). At 0 HP, lerps to red-alarm and pulses at 18 Hz amplitude 0.6. Survival tension feedback ON the ship.
+- **Damage deformation.** Below 60% HP the silhouette starts to dent. Wing tips droop, hull-back pulled in, nose skewed. Determinist offset (no per-frame jitter). Medkit pickup heals → next draw, dents gone.
+- **Vector thrust on roll.** The 3 engine flame `ColorRect` nodes rotate by `-roll * 0.7` so when the ship banks, flames lean opposite as if vectoring thrust.
+- **Trail color shift on bass.** Engine trail base colour `Color(0.2, 1.5, 3.0)` lerps toward `Color(2.5, 2.5, 3.0)` on bass kicks. Trail burns brighter in sync with the music.
+- **Custom boot splash + app icon.** Procedural-ship `boot.png` rendered from `boot.svg` matching `ship_renderer` coordinates. `saturn.png` as application icon.
+
+## [0.1.2] - 2026-05-08
+
 ## [0.1.2] - 2026-05-08
 
 ### Fixed
