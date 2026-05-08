@@ -265,11 +265,19 @@ func _ai_mothership(e: Dictionary, delta: float, gsm: float) -> void:
 	elif e.ai_state == "ATTACK":
 		e.pos.x += sin(e.ai_timer * 1.5) * 80.0 * delta
 		e.shoot_timer -= delta
-		# Telegraph DMC: flash bianco 100ms prima di sparare.
-		if e.shoot_timer < 0.3 and e.shoot_timer > 0.2:
+		# Telegraph 350ms (era 100ms — leggibile solo con conoscenza pregressa
+		# del pattern). Window 0.45 → 0.10 = 350ms di flash bianco prima del
+		# 16-bullet ring fan. All'ingresso del window, parte una "carica" SFX
+		# pitch alto (2.5) che annuncia l'imminente fan — il giocatore ha tempo
+		# di posizionarsi, e il mancato dodge è skill-based, non caos.
+		if e.shoot_timer <= 0.45 and e.shoot_timer > 0.10:
 			e.hit_flash = 1.0
+			if not e.get("telegraph_charging", false):
+				e.telegraph_charging = true
+				audio_manager.play_sfx(2.5, 0.0, e.pos)
 		if e.shoot_timer <= 0:
 			e.shoot_timer = 2.0
+			e.telegraph_charging = false
 			audio_manager.play_sfx(0.8, 2.0, e.pos)
 			var a: float = e.ai_timer * 3.0
 			for j in range(16):

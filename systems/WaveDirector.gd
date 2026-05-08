@@ -13,7 +13,7 @@ var fillers_pool: Array = []
 var wave_queue: Array = []
 var waves_since_filler: int = 0
 var wave_index: int = 0
-var wave_timer: float = 3.0
+var wave_timer: float = 1.0  # da 3.0: il primo nemico arriva dopo intro (2s) + 1s = 3s totali invece di 8s
 
 # Refs (settate da Main in _ready)
 var enemy_system: EnemySystem
@@ -52,7 +52,7 @@ func load_from_json(path: String) -> void:
 		waves_pool = data.get("waves", [])
 		fillers_pool = data.get("fillers", [])
 
-func reset(initial_timer: float = 3.0) -> void:
+func reset(initial_timer: float = 1.0) -> void:
 	wave_queue = []
 	waves_since_filler = 0
 	wave_index = 0

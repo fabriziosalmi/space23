@@ -113,7 +113,7 @@ var bomb_buffer_timer: float = 0.0
 # Game state machine
 var game_state: String = "TITLE"  # TITLE / INTRO / PLAYING / GAMEOVER
 var is_intro: bool = false
-var intro_timer: float = 5.0
+var intro_timer: float = 2.0  # da 5.0: era troppo lungo per un prototipo web (8s totali al primo wave incluso wave_timer)
 var game_over_timer: float = 0.0
 var player_name: String = "PLAYER 1"
 
@@ -320,6 +320,14 @@ func _on_start_pressed() -> void:
 	audio_manager.load_and_play_track(0)
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 	main_camera.zoom = Vector2(INTRO_ZOOM, INTRO_ZOOM)
+	_set_cursor_hidden(true)
+
+# Cursore di sistema nascosto durante gameplay (TITLE/GAMEOVER/PAUSE → visible
+# perché serve per click su menu/leaderboard/retry/name input). La nave segue
+# comunque la mouse position anche con cursore nascosto — Godot tracka mouse
+# pos a prescindere. Su touch/mobile la chiamata è no-op (nessun cursore).
+func _set_cursor_hidden(hidden: bool) -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if hidden else Input.MOUSE_MODE_VISIBLE
 
 func _on_name_submitted(new_text: String) -> void:
 	player_name = new_text
@@ -331,6 +339,7 @@ func trigger_game_over() -> void:
 	player.can_move = false
 	player.visible = false
 	add_shake(60.0)
+	_set_cursor_hidden(false)  # name input + retry button cliccabili
 	explosion_system.spawn(player.position, Color(4.0, 1.0, 0.5), 3.0, true)
 	target_speed_multiplier = 0.0
 
@@ -371,7 +380,7 @@ func _on_retry_pressed() -> void:
 	flow_state = 0.0
 	distance = 0.0
 
-	wave_director.reset(3.0)
+	wave_director.reset()
 
 	player.position = Vector2(screen_size.x / 2.0, screen_size.y - 100)
 	player.velocity = Vector2.ZERO
@@ -408,6 +417,7 @@ func _on_retry_pressed() -> void:
 	drop_event_triggered = false
 	is_paused = false
 	if ui_manager: ui_manager.set_pause_visible(false)
+	_set_cursor_hidden(true)
 
 	audio_manager.load_and_play_track(0)
 
@@ -440,6 +450,8 @@ func toggle_pause() -> void:
 		audio_manager.audio_stream_player.stream_paused = is_paused
 	if ui_manager:
 		ui_manager.set_pause_visible(is_paused)
+	# Cursor visibile in pausa (tap overlay = unpause), nascosto al resume.
+	_set_cursor_hidden(not is_paused)
 
 func _on_bomb_button_pressed() -> void:
 	# Pressione dal bomb button mobile/UI: la riportiamo al buffer in modo che
