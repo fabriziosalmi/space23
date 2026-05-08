@@ -405,6 +405,15 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 					# (visually contradictory). Mirrors the spawn formula in
 					# _init_layers.
 					e.dir = Vector2(randf_range(-0.5, 0.5), 1.0).normalized()
+					# 2% chance: super-comet variante. Coda 2× più lunga,
+					# velocità 1.5×. Discoverable, non costante — il giocatore
+					# ne vede 1 ogni ~minuto e gli sembra raro / speciale.
+					if randf() < 0.02:
+						e.length = randf_range(220.0, 280.0)
+						e.speed = randf_range(500.0, 700.0)
+					else:
+						e.length = randf_range(80.0, 150.0)
+						e.speed = randf_range(300.0, 500.0)
 			else:
 				e.pos.y += e.speed * effective_speed * delta
 				if e.pos.y > screen_size.y + 150:

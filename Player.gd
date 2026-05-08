@@ -209,6 +209,13 @@ func _on_ship_draw() -> void:
 	var cockpit_pulse: float = sin(time_passed * cockpit_pulse_rate)
 	var cockpit_amp: float = 0.15 + hp_low * 0.45
 	var cockpit_brightness: float = 1.0 + cockpit_pulse * cockpit_amp
+	# Calm-breath layer: a velocità bassa la nave "respira" ad ~0.5 Hz, una
+	# pulsazione molto più lenta della HP-pulse. A piena velocità il breath
+	# si fonde col pulse dell'audio (poco percepibile) — ma da fermi il sub-
+	# liminale "il pilota respira" sells una piccola umanità senza essere
+	# vistoso. Modulato da (1 - speed_ratio): max effetto fermo, zero a MAX.
+	var calm_speed_inv: float = 1.0 - clamp(velocity.length() / MAX_SPEED, 0.0, 1.0)
+	cockpit_brightness *= 1.0 + 0.06 * calm_speed_inv * sin(time_passed * 3.0)
 	var cockpit_color_full: Color = Color(2.5, 0.8, 3.5)   # magenta sano
 	var cockpit_color_dying: Color = Color(3.5, 0.5, 0.5)  # rosso allarme
 

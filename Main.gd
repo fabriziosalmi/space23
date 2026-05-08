@@ -740,6 +740,28 @@ func _process(delta: float) -> void:
 	# Post-FX uniforms
 	_update_post_fx()
 
+	# Track-change palette tease: negli ultimi 5s di una traccia, drift molto
+	# soft della palette target verso la palette della prossima traccia. Peak
+	# ~30% blend nell'ultimo frame, quindi current_c_* (lerp 0.8/s) raggiunge
+	# ~24% di blend prima del fade-to-black di _tick_track_transition. Sells
+	# continuità musicale↔visiva — l'universo "sente" il cambio in arrivo.
+	# Skippato durante transition (le palette target sono già nere lì) e in
+	# stati non-PLAYING.
+	if game_state == "PLAYING" and not audio_manager.is_transitioning:
+		var stream = audio_manager.audio_stream_player.stream
+		if stream:
+			var time_left: float = stream.get_length() - audio_manager.get_playback_position()
+			if time_left > 0.0 and time_left < 5.0:
+				var tease: float = (5.0 - time_left) / 5.0 * 0.3
+				var pl: Array = audio_manager.playlist
+				var cur_idx: int = audio_manager.current_track_idx
+				var next_idx: int = (cur_idx + 1) % pl.size()
+				var cur_colors = pl[cur_idx].colors
+				var next_colors = pl[next_idx].colors
+				target_c_bg = cur_colors[0].lerp(next_colors[0], tease)
+				target_c_neb1 = cur_colors[1].lerp(next_colors[1], tease)
+				target_c_neb2 = cur_colors[2].lerp(next_colors[2], tease)
+
 	# Transizione colori nebula
 	current_c_bg = current_c_bg.lerp(target_c_bg, 0.8 * delta)
 	current_c_neb1 = current_c_neb1.lerp(target_c_neb1, 0.8 * delta)

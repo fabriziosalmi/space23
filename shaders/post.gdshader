@@ -79,8 +79,11 @@ void fragment() {
 		float b = texture(screen_tex, uv - dir * shift).b;
 		vec3 color = vec3(r, g, b);
 
-		// 2. Vignettatura cinematografica
-		float vignette = smoothstep(0.8, 0.2, dist);
+		// 2. Vignettatura cinematografica con bass-breathe. La soglia interna
+		// modula con audio_bass (0.78..0.82) — la vignette "respira" coi kick
+		// senza essere percepibile per-frame. Tie post-FX ↔ traccia musicale.
+		float vig_inner = 0.8 - audio_bass * 0.04;
+		float vignette = smoothstep(vig_inner, 0.2, dist);
 		color *= mix(0.4, 1.0, vignette);
 
 		// 3. Scanlines CRT sottilissime
