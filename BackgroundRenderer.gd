@@ -398,6 +398,13 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 				if e.pos.y > screen_size.y + 200 or e.strip_x < -200 or e.strip_x > strip_width + 200:
 					e.pos.y = -200
 					e.strip_x = randf_range(-200, strip_width + 200)
+					# Randomize direction on wrap. Without this, a comet that
+					# entered moving SW would re-enter from the top-left still
+					# heading SW — could exit the strip immediately, and the
+					# comet's drawn tail would point NE while motion is SW
+					# (visually contradictory). Mirrors the spawn formula in
+					# _init_layers.
+					e.dir = Vector2(randf_range(-0.5, 0.5), 1.0).normalized()
 			else:
 				e.pos.y += e.speed * effective_speed * delta
 				if e.pos.y > screen_size.y + 150:
