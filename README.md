@@ -22,16 +22,26 @@ Desktop:
 - Smart bomb: `X`
 - Pause: `Esc` / `P`
 
+Gamepad (USB / Bluetooth, Xbox / PlayStation layout):
+
+- Move: D-pad or left stick
+- Fire: `A` (Xbox) / `✕` (PS) — or `RB` / `R1`
+- Dash: `B` / `○` — or `LB` / `L1`
+- Smart bomb: `X` / `□` — or `Y` / `△`
+- Pause: `Start`
+- Title screen / Game Over: any button
+
 Mobile: tap-and-drag to move + autofire; on-screen `B` for the bomb.
 
 ## Highlights
 
-- **Six tracks**, each one drives the palette of the procedural nebula and synchronises a screen warp + a burst of enemies on the drop. One boss per track.
-- **Six enemy AIs** (scout, fighter, tank, spinner, invader, mothership) drawn from twelve wave shapes through a shuffled deck.
-- **Four power-ups** — heal, railgun, drones, black hole. The black hole bends the screen via the same fragment shader that handles boss-kill lensing.
-- **Time dilation tied to your movement**, SUPERHOT-style: stop and the world slows, dash and it snaps back.
+- **Six tracks**, each one drives the palette of the procedural nebula and synchronises a screen warp + a burst of enemies on the drop. One boss per track. The last 5 s of a track quietly tease the next track's palette so the cosmos shifts in time with the music.
+- **Twelve enemy variants** across six AI patterns (scout, fighter, tank, spinner, invader, mothership) drawn from twelve wave shapes through a shuffled deck.
+- **Four power-ups** — heal, railgun, drones, black hole. The black hole bends the screen via the same fragment shader that handles boss-kill lensing. Pickup spawns a colour-matched expanding ring as a "something appeared" cue.
 - **Wave pacing coupled to the music**: build-up before the drop spaces enemies further apart, the drop force-spawns a barrage, post-drop gives a brief calm.
-- **Procedural everything**: ship, trails, explosions, parallax, nebula are drawn from code/shaders. Only the planet/galaxy/nebula sprites that drift past as landmarks are images.
+- **Audio-reactive everywhere**: a three-band spectrum analyser (low / mid / high) feeds the nebula clouds, starfield twinkle, vignette breath, ship cockpit pulse, post-FX chromatic aberration, and parallax kick boost. On the web, where Godot's spectrum analyser can return zero on some setups, a BPM-keyed synth fallback keeps everything reactive.
+- **Procedural everything**: ship, trails, explosions, parallax, nebula are drawn from code/shaders. Only planet / galaxy / nebula sprites drift past as landmarks. The world is rendered in a strip 1.4× the viewport width so each layer parallaxes at its own depth as you lean sideways.
+- **Low-HP heartbeat** + **damage edge glow** + **boss telegraph with charge SFX**: the game tells you what's about to happen before it kills you. Skill-based dodge, not luck.
 
 ## Run locally
 
