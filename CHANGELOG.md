@@ -2,6 +2,11 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.9] - 2026-05-08
+
+### Added
+- **Strip 1.4× + position-keyed lateral parallax (`bg_v2.md` Phase 1.5).** Replaces the velocity-driven `lateral_factor_*` drift in `BackgroundRenderer` (sub-pixel-per-frame, broken when the player held a direction) with a position-keyed model: the universe is now rendered in a strip 1.4× the viewport width; `viewport_offset_x` smoothly tracks `player.position.x` (clamped so the strongest layer never exposes strip edges) and each layer shifts by its own depth factor — nebula shader 0.05 / deep landmarks 0.20 / planets 0.45 / foreground 0.85. CPU layer entries gain a `strip_x` anchor and recompute `pos.x` every frame; planet/deep-landmark sprites store `strip_x` in metadata; `nebula.gdshader` gains a `lateral_offset` uniform applied to all sample UVs (clouds, both starfield layers, streaks). Spawns place bodies across the full strip width, so off-axis composition becomes "discoverable" by leaning sideways — the doc's "explorable on a small scale" payoff. `_has_visible_landmark()` now checks both axes so a body parked off-screen-X (at a strip-edge anchor) doesn't block subsequent on-axis spawns. Skips Phase 1's `BackgroundDirector` / `ChunkProvider` scaffolding by design: that phase is pure refactor for a deferred Phase 2 (hand-authored chunks), and YAGNI applies until a real consumer is greenlit.
+
 ## [0.1.8] - 2026-05-08
 
 ### Added
