@@ -2,6 +2,11 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.17] - 2026-05-08
+
+### Fixed
+- **Wing-tip nav lights showed dark square boxes around them.** A user screenshot caught the issue cleanly. The single `draw_circle(WING_TIP_*, 2.5, nav_red * pulse)` with HDR brightness rgb `3.0` was triggering an artefact of Godot's 2D bloom downsample: at the lowest glow mip, a tiny bright HDR point becomes a quantised few-pixel square, visible as a dark-bounded "square box" silhouetted against the black background. Fix: rounded glow via 3 concentric `draw_circle` layers per light — outer halo (8 px, dim alpha 0.18), mid glow (4.5 px, near-bloom-threshold alpha 0.55), core (2 px, moderately HDR rgb `1.3` instead of `3.0`). The geometric multi-circle gradient is bloom-independent, masks any residual bloom blockiness, and the dropped HDR core means the bloom itself is gentler. Pulse animation preserved.
+
 ## [0.1.16] - 2026-05-08
 
 ### Removed
