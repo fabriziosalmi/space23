@@ -50,6 +50,16 @@ func set_grayscale(v: float) -> void:
 	if rect and rect.material:
 		rect.material.set_shader_parameter("grayscale", v)
 
+# Radial blur masked around the ship. Drive intensity from shake_intensity in
+# Main → punchy "screen distortion" without nauseating physical camera shake.
+func set_radial_blur(v: float) -> void:
+	if rect and rect.material:
+		rect.material.set_shader_parameter("radial_blur", v)
+
+func set_ship_uv(uv: Vector2) -> void:
+	if rect and rect.material:
+		rect.material.set_shader_parameter("ship_uv", uv)
+
 func get_zoom_blur() -> float:
 	if rect and rect.material:
 		var v = rect.material.get_shader_parameter("zoom_blur")

@@ -88,19 +88,49 @@ func _ready():
 		sfx_players.append(p)
 
 func _process(delta):
+	# Spectrum reading: works fine on desktop Godot, but on Godot 4 web export
+	# AudioEffectSpectrumAnalyzer often returns near-zero magnitudes despite
+	# audio playing (known limitation: WebAudio chain doesn't always feed the
+	# effect properly). Without a fallback the nebula goes static on Pages.
+	#
+	# Strategy: read the spectrum, BUT also synthesise a fallback "beat" from
+	# the music playback position. If the spectrum is alive, the real beats
+	# dominate; if it's dead (web), the synth carries the reactivity at a
+	# convincing 130 BPM-ish pulse.
+	var mag_low: float = 0.0
+	var mag_mid: float = 0.0
+	var mag_high: float = 0.0
 	if spectrum_analyzer:
-		var mag_low = spectrum_analyzer.get_magnitude_for_frequency_range(20, 250).length()
-		var mag_mid = spectrum_analyzer.get_magnitude_for_frequency_range(250, 2000).length()
-		var mag_high = spectrum_analyzer.get_magnitude_for_frequency_range(2000, 10000).length()
-		# Gain × 6 + lerp 18 (era × 4 / lerp 10): i raw magnitudes da
-		# SpectrumAnalyzer in Godot sono in 0.05-0.3 per musica normale, anche
-		# con × 4 i beat sui peak non saturavano abbastanza per produrre nubi
-		# "che cambiano colore". × 6 + clamp e attack più snappy garantisce che
-		# bass/mid/high abbiano dynamic range pieno [0..1], così il shader può
-		# disegnare bande visualmente distinte (red/cyan/pink).
-		audio_low = lerp(audio_low, clamp(mag_low * 6.0, 0.0, 1.0), 18.0 * delta)
-		audio_mid = lerp(audio_mid, clamp(mag_mid * 6.0, 0.0, 1.0), 18.0 * delta)
-		audio_high = lerp(audio_high, clamp(mag_high * 6.0, 0.0, 1.0), 18.0 * delta)
+		mag_low = spectrum_analyzer.get_magnitude_for_frequency_range(20, 250).length()
+		mag_mid = spectrum_analyzer.get_magnitude_for_frequency_range(250, 2000).length()
+		mag_high = spectrum_analyzer.get_magnitude_for_frequency_range(2000, 10000).length()
+
+	var real_low: float = clamp(mag_low * 6.0, 0.0, 1.0)
+	var real_mid: float = clamp(mag_mid * 6.0, 0.0, 1.0)
+	var real_high: float = clamp(mag_high * 6.0, 0.0, 1.0)
+
+	# Synth fallback: pulse at ~130 BPM derived from playback position. Only
+	# active when music is playing — otherwise zero so TITLE/silence stays calm.
+	var synth_low: float = 0.0
+	var synth_mid: float = 0.0
+	var synth_high: float = 0.0
+	if audio_stream_player and audio_stream_player.playing:
+		var t: float = audio_stream_player.get_playback_position()
+		# Beat phase in cycles: 130 BPM = 2.17 beats/sec
+		var beat: float = t * 2.17
+		# Sharp bass kick: pow makes the pulse spiky instead of sinusoidal
+		var b_phase: float = fract(beat)
+		synth_low = pow(1.0 - b_phase, 3.0) * 0.7  # decays from 0.7 to 0
+		# Mid: slower rolling 8th-note pulse
+		synth_mid = (0.5 + 0.5 * sin(beat * 12.566)) * 0.45
+		# High: rapid 16th hi-hat pulse
+		synth_high = (0.5 + 0.5 * sin(beat * 25.133)) * 0.35
+
+	# Take max of real and synth: spectrum-driven peaks win when alive, synth
+	# floors the value when spectrum is dead (web).
+	audio_low = lerp(audio_low, max(real_low, synth_low), 18.0 * delta)
+	audio_mid = lerp(audio_mid, max(real_mid, synth_mid), 18.0 * delta)
+	audio_high = lerp(audio_high, max(real_high, synth_high), 18.0 * delta)
 
 func load_and_play_track(idx: int):
 	current_track_idx = idx

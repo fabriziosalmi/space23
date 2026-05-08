@@ -2,7 +2,14 @@
 
 [sub_resource type="AudioEffectSpectrumAnalyzer" id="SpectrumAnalyzer_main"]
 buffer_length = 0.1
+fft_size = 3
 
 [resource]
+bus/0/name = &"Master"
+bus/0/solo = false
+bus/0/mute = false
+bus/0/bypass_fx = false
+bus/0/volume_db = 0.0
+bus/0/send = &"Master"
 bus/0/effect/0/effect = SubResource("SpectrumAnalyzer_main")
 bus/0/effect/0/enabled = true

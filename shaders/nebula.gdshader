@@ -132,17 +132,32 @@ void fragment() {
 	color += vec3(0.95, 0.5, 1.0) * audio_high * smoothstep(0.65, 0.9, n2) * 0.7;
 
 	// --- STARFIELD — 2 layer procedurali in loop, twinkle per-stella ---
-	// Sostituisce gran parte delle procedural draw lato CPU: stelle generate
-	// su griglia, scroll vertical via UV, twinkle via sin(time + phase),
-	// colori variati per stella (white/blue/yellow/pink). GPU-cheap, loop
-	// naturale (modulo UV), no spawn/cull, no allineamenti spuri.
+	// Density bumped + core_radius reduced: stelle più piccole (puntiformi)
+	// mantenendo lo stesso pattern e densità visiva. Era 90/0.05 e 50/0.08
+	// → user vedeva stelle "troppo grandi". Adesso 140/0.035 e 75/0.05.
 	vec2 star_uv1 = UV;
 	star_uv1.y += scroll_time * 0.04;
-	color += starfield_layer(star_uv1, 90.0, 0.985, 0.05, 3.5) * (0.7 + audio_mid * 0.4);
+	color += starfield_layer(star_uv1, 140.0, 0.985, 0.035, 3.5) * (0.7 + audio_mid * 0.4);
 
 	vec2 star_uv2 = UV;
 	star_uv2.y += scroll_time * 0.10;
-	color += starfield_layer(star_uv2, 50.0, 0.992, 0.08, 5.0) * 1.2 * (0.8 + audio_high * 0.5);
+	color += starfield_layer(star_uv2, 75.0, 0.992, 0.05, 5.0) * 1.2 * (0.8 + audio_high * 0.5);
+
+	// --- SPEED STREAKS — sottili linee verticali "warp" che vendono velocità ---
+	// Pochissime, sottili, scrollano fast verso il basso, intensità modulata
+	// dal bass: kick → streak più visibili. "Quasi impercettibili" ma il
+	// cervello le legge come "stiamo viaggiando fast".
+	vec2 streak_uv = UV;
+	streak_uv.y += scroll_time * 0.18;
+	vec2 streak_cell = floor(streak_uv * vec2(160.0, 35.0));
+	float streak_h = hash21(streak_cell + 5.7);
+	float streak_visible = step(0.992, streak_h);
+	vec2 streak_local = fract(streak_uv * vec2(160.0, 35.0));
+	float streak_jx = hash21(streak_cell + 11.3);
+	float streak_bar = smoothstep(0.05, 0.0, abs(streak_local.x - streak_jx));
+	float streak_vfade = smoothstep(0.0, 0.25, streak_local.y) * (1.0 - smoothstep(0.7, 1.0, streak_local.y));
+	float streak_intensity = (0.18 + audio_low * 0.45);
+	color += vec3(0.85, 0.9, 1.0) * streak_bar * streak_vfade * streak_intensity * streak_visible;
 
 	COLOR = vec4(color, 1.0);
 }

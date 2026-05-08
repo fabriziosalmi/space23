@@ -10,6 +10,11 @@ uniform vec2 bh_pos = vec2(0.5);
 uniform float bh_intensity = 0.0;
 uniform float flow_state = 0.0;
 uniform float audio_bass = 0.0;
+// Radial blur from ship — replaces brute camera shake with a screen-space
+// distortion that's centred on the ship (calm) and pulls the edges. Sells
+// "punch" without inducing motion sickness.
+uniform vec2 ship_uv = vec2(0.5, 0.85);
+uniform float radial_blur = 0.0;
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
@@ -79,6 +84,29 @@ void fragment() {
 		if (grayscale > 0.0) {
 			float gray = dot(color, vec3(0.299, 0.587, 0.114));
 			color = mix(color, vec3(gray), grayscale);
+		}
+
+		// 6. Radial blur from ship (replaces shake punch). Mask: full effect at
+		// edges, zero around the ship (radius 0.18..0.55 with aspect correction).
+		// Driven by add_shake → shake_intensity → radial_blur. So every existing
+		// add_shake call site (kill, hit, bomb, drop) gets the blur for free,
+		// while the camera's physical shake is now small and gentle.
+		if (radial_blur > 0.0) {
+			vec2 from_ship = uv - ship_uv;
+			vec2 from_ship_aspect = from_ship;
+			from_ship_aspect.x *= 1.77;  // 16:9 → make mask circular
+			float dist_ship = length(from_ship_aspect);
+			float mask = smoothstep(0.18, 0.55, dist_ship);
+			if (mask > 0.0) {
+				vec3 rb = vec3(0.0);
+				for (int i = 1; i <= 5; i++) {
+					float t = float(i) / 5.0;
+					vec2 s_uv = uv + from_ship * t * 0.045 * radial_blur * mask;
+					rb += texture(screen_tex, s_uv).rgb;
+				}
+				rb *= 0.2;
+				color = mix(color, rb, radial_blur * mask);
+			}
 		}
 
 		COLOR = vec4(color, 1.0);

@@ -44,7 +44,7 @@ const BOSS_TYPE_INDEX: int = 5
 # Player HP / Camera
 const PLAYER_HP_MAX: float = 100.0
 const PLAYER_HEAL: float = 40.0
-const CAMERA_SHAKE_MAX: float = 45.0  # ridotto da 80: a peak ±80px era motion-sick territory
+const CAMERA_SHAKE_MAX: float = 22.0  # 80→45→22: ora il "punch" arriva via radial blur, lo shake fisico è giusto a contorno
 const INTRO_ZOOM: float = 4.0
 const GAMEOVER_ZOOM: float = 2.5
 
@@ -759,6 +759,17 @@ func _check_boss_spawn() -> void:
 func _update_post_fx() -> void:
 	post_fx.set_flow(flow_state)
 	post_fx.set_audio_bass(audio_manager.audio_low)
+
+	# Radial blur driven by shake_intensity — same trauma signal that does the
+	# physical shake. Net effect: small physical shake + bigger visual blur
+	# pulse around the ship. Replaces the brute "shake everything" feel.
+	post_fx.set_radial_blur(shake_intensity / CAMERA_SHAKE_MAX)
+	# Ship's rendered UV (camera-relative). Used as the calm centre of the
+	# blur mask. We don't compensate for camera.offset here — the slight
+	# off-centre during shake is invisible.
+	if player and is_instance_valid(player):
+		var ship_screen: Vector2 = player.position - main_camera.position + (screen_size / 2.0)
+		post_fx.set_ship_uv(ship_screen / screen_size)
 
 	# Boss-explosion lensing ha priorità sul BH reale finché il timer è attivo.
 	if boss_lens_timer > 0.0:
