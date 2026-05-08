@@ -128,9 +128,12 @@ func _next_wave(distance: float) -> Variant:
 		return null
 	return wave_queue.pop_back()
 
-# Le int-division (count/2, w/cols) sono volute: producono offset/index integer
-# per il layout delle wave. Suppressed alla function-scope.
-@warning_ignore("integer_division")
+# Le int-division qui sotto sono volute: producono offset/index integer per il
+# layout delle wave. `count >> 1` per la metà-array (semanticamente identico
+# a `count / 2` su int positivi, ma esplicito → niente INTEGER_DIVISION warn).
+# Per `w / cols` (cols variabile) annotation per-line — `>>` non si applica.
+# Nota: l'@warning_ignore a function-level non funziona su Godot 4 (sopprime
+# solo warning sulla function declaration, non sul body).
 func _spawn_pattern(w_data: Dictionary, diff: float, screen_size: Vector2) -> void:
 	if not enemy_system:
 		return
@@ -146,8 +149,8 @@ func _spawn_pattern(w_data: Dictionary, diff: float, screen_size: Vector2) -> vo
 		"v_shape":
 			var cx: float = randf_range(200, screen_size.x - 200)
 			for w in range(count):
-				var offset_x: float = (w - int(count / 2)) * 60
-				var offset_y: float = abs(w - int(count / 2)) * -50
+				var offset_x: float = (w - (count >> 1)) * 60
+				var offset_y: float = abs(w - (count >> 1)) * -50
 				enemy_system.spawn(0, Vector2(cx + offset_x, -100 + offset_y), diff, speed_mult, color_mod)
 		"horizontal":
 			var start_x: float = randf_range(100, screen_size.x - 300)
@@ -164,15 +167,16 @@ func _spawn_pattern(w_data: Dictionary, diff: float, screen_size: Vector2) -> vo
 		"spinner":
 			enemy_system.spawn(3, Vector2(screen_size.x / 2.0, -100), diff, speed_mult, color_mod)
 		"invaders":
-			var start_x_inv: float = (screen_size.x / 2.0) - ((count / 2) * 80)
+			var start_x_inv: float = (screen_size.x / 2.0) - ((count >> 1) * 80)
 			for w in range(count):
 				enemy_system.spawn(4, Vector2(start_x_inv + w * 80, -100 - (w % 2) * 40), diff, speed_mult, color_mod)
 		"octopus_grid":
 			# 2 rows × N columns of OCTOPUS (#6), staggered.
-			var cols: int = max(2, count / 2)
+			var cols: int = max(2, count >> 1)
 			var oct_x: float = (screen_size.x / 2.0) - (cols / 2.0) * 70.0
 			for w in range(count):
-				var row: int = int(w / cols)
+				@warning_ignore("integer_division")
+				var row: int = w / cols
 				var col: int = w % cols
 				enemy_system.spawn(6, Vector2(oct_x + col * 70 + row * 35, -100 - row * 70), diff, speed_mult, color_mod)
 		"crab_line":
@@ -190,8 +194,8 @@ func _spawn_pattern(w_data: Dictionary, diff: float, screen_size: Vector2) -> vo
 			# MANTIS (#9) in a v-formation diving from the top.
 			var mx: float = randf_range(250, screen_size.x - 250)
 			for w in range(count):
-				var ox: float = (w - int(count / 2)) * 80
-				var oy: float = abs(w - int(count / 2)) * -60
+				var ox: float = (w - (count >> 1)) * 80
+				var oy: float = abs(w - (count >> 1)) * -60
 				enemy_system.spawn(9, Vector2(mx + ox, -100 + oy), diff, speed_mult, color_mod)
 		"dread_pair":
 			# Two DREAD (#10) heavy walls converging.
