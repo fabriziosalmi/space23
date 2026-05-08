@@ -2,6 +2,26 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.14] - 2026-05-08
+
+A pure-aesthetic polish pass — 9 subliminal touches integrated into existing systems. Each individually adds 2-5% to the perceived "polish"; the cumulative effect shifts the game from "competent prototype" to "someone cared about the corners". No new infrastructure, no AI-slop visual spam.
+
+### Added
+- **HUD label brightness pulse on increment.** `KILLS` / `BOMBS` labels brightness-pulse 1.0 → 1.6 × over 100 ms (modulate, multiplicative on font color) when their value changes. `DIST` is excluded (it grows every frame, would be a constant pulse). Sells "this number just changed" without the slop of floating "+250" popups.
+- **Powerup spawn ring tell.** When a powerup drops, a 50 px expanding ring at the spawn position, 0.4 s, colored to match powerup type (single source of truth in `PowerupSystem._color_for_type`). New `ExplosionSystem.spawn_ring()` helper — empty shards array, just shockwaves. Sells "qualcosa è apparso" without screen noise.
+- **Damage edge glow.** New `damage_flash` uniform in `post.gdshader`, red tint applied via `mask = smoothstep(0.5, 1.0, dist)` — only at screen edges, peak ~17 % mix at corners, centre untouched (ship + bullets remain readable). 200 ms decay from `Main.damage_flash_timer`, set to full on `damage_player`. Soft, leggibile in periferia.
+- **Low-HP heartbeat audio.** When `player_hp < 25`, pulse SFX every 0.857 s (~70 bpm), pitch 0.4 (grave), vol −15 dB (quiet, just present). Resets on heal / death / non-PLAYING state. "Il tuo cuore batte, sei ferito" — felt more than heard.
+- **Player cockpit calm-breath at low velocity.** Layer added on top of the existing HP-pulse: at velocity = 0 the cockpit gently pulses at ~0.5 Hz, at `MAX_SPEED` the breath fades to zero. 6 % amplitude. Sells "the pilot is breathing" without being twitchy.
+- **Vignette bass-breathe in `post.gdshader`.** The inner vignette threshold was a fixed `0.8`; now `0.8 - audio_bass * 0.04`. Imperceptible per-frame but ties post-FX to the music — the screen breathes with the kicks.
+- **Rare super-comet variant in `BackgroundRenderer` comet wrap.** 2 % chance on each wrap re-rolls the comet to length × 2 + speed × 1.5. Player sees roughly one super-comet per minute — discoverable, not constant. Matches the spawn distribution otherwise (98 % of wraps stay normal).
+- **Track-change palette tease in the last 5 s of the current track.** Soft blend (peak 30 % at the final frame) of the nebula targets toward the next track's palette. `current_c_*` colours (lerp at 0.8/s) reach ~24 % blend before `_tick_track_transition` takes over with the fade-to-black. Sells "the universe feels the impending shift" — subliminal continuity musical↔visual.
+
+### Changed
+- **Hit vs kill explosion size differentiation.** Previously every player-bullet hit spawned a 0.3-scale cyan explosion at impact, *plus* a 1.0-scale orange explosion at enemy pos on kill — two explosions on every kill, visually noisy. Now: cyan only on non-lethal hit (scale `0.15`, smaller), nothing on kill (`handle_enemy_kill`'s orange does the work). Reads cleaner: "I hit" vs "I killed" are now visually distinct cues.
+
+### Skipped from the original list
+- **Track crossfade cosine ease** — turned out to require retiming the audio handoff (currently at `t=1.0` of the transition; cosine ease wants peak black at `t=0.5`, which means moving the `current_track_idx` switch to mid-transition + extending the `is_transitioning` gate). Not the "1-LOC change" originally estimated. Deferred.
+
 ## [0.1.13] - 2026-05-08
 
 ### Fixed
