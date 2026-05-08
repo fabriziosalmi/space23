@@ -878,11 +878,17 @@ func _tick_playing(delta: float) -> void:
 			drop_event_triggered = true
 			_on_drop_event()
 
-	# SUPERHOT: time dilation legata alla velocità del player. Floor a 0.5
-	# (prima 0.05): da fermo il mondo respira al 50%, prima andava al 5% e
-	# il 20× di slowdown si percepiva come stutter sincrono su tutti gli
-	# elementi gsm-scaled (bullets, enemies, scroll, comets).
-	var speed_ratio: float = clamp(player.velocity.length() / player.max_speed, 0.5, 1.0)
+	# SUPERHOT: time dilation legata alla velocità del player. Floor 0.9
+	# (prima 0.5, prima ancora 0.05). Il floor 0.5 toglieva lo stutter
+	# discreto del 0.05 ma lasciava un'oscillazione *continua* sincrona:
+	# tutti gli elementi gsm-scaled (bullets, enemies, scroll, comete)
+	# pulsavano insieme al ritmo dei cambi di velocità del player. Anche
+	# smooth, il sync era leggibile come "il mondo cambia velocità con me"
+	# = artificial. A 0.9 l'ampiezza scende dal 50% al 10% — sotto la
+	# soglia percettiva. SuperHot vive ancora come *feeling* sottile
+	# ("il mondo ha leggero peso quando ti fermi") senza il sync visibile.
+	# Se ulteriormente eccessivo, escalation: disaccoppiare il bg dal gsm.
+	var speed_ratio: float = clamp(player.velocity.length() / player.max_speed, 0.9, 1.0)
 	if player.is_dashing:
 		speed_ratio = 1.0  # Dash forza il tempo reale
 	target_speed_multiplier = base_target_speed * speed_ratio * (1.0 + flow_state * FLOW_SPEED_BONUS)
