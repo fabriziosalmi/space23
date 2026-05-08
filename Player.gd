@@ -225,8 +225,13 @@ func _on_ship_draw() -> void:
 	var trim: Color = Color(0.4, 1.4, 3.0) * trim_glow_mult        # Neon blue (HDR + audio)
 	var trim_dim: Color = Color(0.2, 0.7, 1.5) * trim_glow_mult
 	var cockpit_glow: Color = cockpit_color_full.lerp(cockpit_color_dying, hp_low) * cockpit_brightness
-	var nav_red: Color = Color(3.0, 0.4, 0.4)
-	var nav_green: Color = Color(0.4, 3.0, 0.6)
+	# nav_red/nav_green era HDR 3.0 su un singolo draw_circle 2.5px → vedi
+	# i commenti sui draw_circle delle nav_lights più sotto. Adesso il core
+	# HDR è ridotto a 1.3 (lieve bloom invece di artefatto blocky) e la luce
+	# vive in 3 cerchi concentrici geometric (vedi sotto). Conservato il nome
+	# come "core color" per chiarezza.
+	var nav_red_core: Color = Color(1.3, 0.4, 0.4)
+	var nav_green_core: Color = Color(0.4, 1.3, 0.45)
 
 	# === VERTICI (origine al centro nave, naso = -y) ===
 	var NOSE := Vector2(0, -45)
@@ -297,10 +302,25 @@ func _on_ship_draw() -> void:
 	var cockpit := PackedVector2Array([Vector2(0, -32), Vector2(-4, -18), Vector2(0, -8), Vector2(4, -18)])
 	n.draw_polygon(cockpit, PackedColorArray([cockpit_glow * 1.3, cockpit_glow, cockpit_glow * 1.5, cockpit_glow]))
 
-	# === LUCI DI POSIZIONE port/starboard, pulsanti ===
+	# === LUCI DI POSIZIONE port/starboard — rounded glow a 3 cerchi ===
+	# Era un singolo draw_circle 2.5px con HDR rgb 3.0 (nav_red/nav_green).
+	# Il core HDR brillantissimo su area minima triggerava artefatti blocky
+	# del bloom downsample di Godot 2D: il glow fa multi-mip downsample → un
+	# punto bright HDR diventa un quadrato di pochi pixel al lowest mip,
+	# visibile come "dark square box" stagliato contro il bg nero.
+	# Fix: glow geometrico a 3 cerchi concentrici (halo dim → mid → core
+	# leggermente HDR). Il bloom resta soft, il gradient è sempre circolare
+	# a qualsiasi mip / risoluzione, e il visual "luce di posizione neon"
+	# resta riconoscibile.
 	var pulse: float = 0.7 + 0.3 * sin(time_passed * 4.0)
-	n.draw_circle(WING_TIP_L, 2.5, nav_red * pulse)
-	n.draw_circle(WING_TIP_R, 2.5, nav_green * pulse)
+	# Red (port, ala sinistra)
+	n.draw_circle(WING_TIP_L, 8.0, Color(0.5, 0.1, 0.1, 0.18))     # outer halo dim
+	n.draw_circle(WING_TIP_L, 4.5, Color(1.0, 0.25, 0.25, 0.55))   # mid glow
+	n.draw_circle(WING_TIP_L, 2.0, nav_red_core * pulse)           # core moderately HDR
+	# Green (starboard, ala destra)
+	n.draw_circle(WING_TIP_R, 8.0, Color(0.1, 0.5, 0.2, 0.18))
+	n.draw_circle(WING_TIP_R, 4.5, Color(0.25, 1.0, 0.4, 0.55))
+	n.draw_circle(WING_TIP_R, 2.0, nav_green_core * pulse)
 
 var can_move = true
 var shoot_timer = 0.0
