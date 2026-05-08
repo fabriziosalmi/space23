@@ -2,6 +2,14 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.11] - 2026-05-08
+
+### Fixed
+- **Comet direction randomized on wrap.** A comet that entered moving SW used to re-enter from the top still heading SW — could exit the strip immediately, and its drawn tail (`e.dir`-based) pointed NE while motion was SW (visually contradictory: "tail says it came from the lower-right, but the comet is heading lower-right"). On wrap, `e.dir` is now re-rolled with the same formula as the original spawn (`Vector2(randf_range(-0.5, 0.5), 1.0).normalized()`), so each re-entry reads as a fresh comet with a coherent trajectory.
+
+### Changed
+- **`Player.gd` uses a typed `main: Main` ref instead of `get_parent()` defensive checks.** Replaces 9 instances of the prior pattern (`var pn = get_parent(); if pn and pn.get("audio_manager") != null: pn.audio_manager.play_sfx(...)`) with direct typed access (`main.audio_manager.play_sfx(...)`). The `main` ref is set by `Main._ready` immediately after `add_child(player)` — wired before the first `_process` or draw signal fires, so no init-order risk. Net `-40 / +28` in `Player.gd`, `+1` wiring line in `Main._ready`. Behavioural delta: zero. Architectural delta: a future rename of `audio_manager` / `global_speed_multiplier` / `spawn_player_bullet` etc in `Main` now becomes a compile-time error in `Player` instead of silently no-op'ing the call (the prior `if pn.get("X") != null` guard was fail-open — it would have hidden the rename).
+
 ## [0.1.10] - 2026-05-08
 
 ### Fixed
