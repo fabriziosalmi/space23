@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" preserveAspectRatio="xMidYMid meet" role="img" aria-label="SPACE23 - click to play">
+  <title>SPACE23 — click to play</title>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#0a0018"/>
+      <stop offset="55%"  stop-color="#000000"/>
+      <stop offset="100%" stop-color="#001830"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#ffffff"/>
+      <stop offset="60%"  stop-color="#cce8ff"/>
+      <stop offset="100%" stop-color="#66aaff"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- 5x7 pixel font, glyphs in unit grid. Each glyph occupies 5 cells width.
+         Use <use> with x-offset (multiples of 6: 5 cells + 1 gap) at outer scale. -->
+
+    <symbol id="g_S" overflow="visible">
+      <rect x="1" y="0" width="4" height="1"/>
+      <rect x="0" y="1" width="1" height="1"/>
+      <rect x="0" y="2" width="1" height="1"/>
+      <rect x="1" y="3" width="3" height="1"/>
+      <rect x="4" y="4" width="1" height="1"/>
+      <rect x="4" y="5" width="1" height="1"/>
+      <rect x="0" y="6" width="4" height="1"/>
+    </symbol>
+    <symbol id="g_P" overflow="visible">
+      <rect x="0" y="0" width="4" height="1"/>
+      <rect x="0" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/>
+      <rect x="0" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/>
+      <rect x="0" y="3" width="4" height="1"/>
+      <rect x="0" y="4" width="1" height="5"/>
+    </symbol>
+    <symbol id="g_A" overflow="visible">
+      <rect x="1" y="0" width="3" height="1"/>
+      <rect x="0" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/>
+      <rect x="0" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/>
+      <rect x="0" y="3" width="5" height="1"/>
+      <rect x="0" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/>
+      <rect x="0" y="5" width="1" height="1"/><rect x="4" y="5" width="1" height="1"/>
+      <rect x="0" y="6" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/>
+    </symbol>
+    <symbol id="g_C" overflow="visible">
+      <rect x="1" y="0" width="4" height="1"/>
+      <rect x="0" y="1" width="1" height="5"/>
+      <rect x="1" y="6" width="4" height="1"/>
+    </symbol>
+    <symbol id="g_E" overflow="visible">
+      <rect x="0" y="0" width="5" height="1"/>
+      <rect x="0" y="1" width="1" height="1"/>
+      <rect x="0" y="2" width="1" height="1"/>
+      <rect x="0" y="3" width="4" height="1"/>
+      <rect x="0" y="4" width="1" height="1"/>
+      <rect x="0" y="5" width="1" height="1"/>
+      <rect x="0" y="6" width="5" height="1"/>
+    </symbol>
+    <symbol id="g_2" overflow="visible">
+      <rect x="1" y="0" width="3" height="1"/>
+      <rect x="0" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/>
+      <rect x="4" y="2" width="1" height="1"/>
+      <rect x="3" y="3" width="1" height="1"/>
+      <rect x="2" y="4" width="1" height="1"/>
+      <rect x="1" y="5" width="1" height="1"/>
+      <rect x="0" y="6" width="5" height="1"/>
+    </symbol>
+    <symbol id="g_3" overflow="visible">
+      <rect x="1" y="0" width="3" height="1"/>
+      <rect x="0" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/>
+      <rect x="4" y="2" width="1" height="1"/>
+      <rect x="1" y="3" width="3" height="1"/>
+      <rect x="4" y="4" width="1" height="1"/>
+      <rect x="0" y="5" width="1" height="1"/><rect x="4" y="5" width="1" height="1"/>
+      <rect x="1" y="6" width="3" height="1"/>
+    </symbol>
+    <symbol id="g_I" overflow="visible">
+      <rect x="0" y="0" width="5" height="1"/>
+      <rect x="2" y="1" width="1" height="5"/>
+      <rect x="0" y="6" width="5" height="1"/>
+    </symbol>
+    <symbol id="g_N" overflow="visible">
+      <rect x="0" y="0" width="1" height="7"/>
+      <rect x="4" y="0" width="1" height="7"/>
+      <rect x="1" y="1" width="1" height="1"/>
+      <rect x="1" y="2" width="1" height="1"/>
+      <rect x="2" y="3" width="1" height="1"/>
+      <rect x="3" y="4" width="1" height="1"/>
+      <rect x="3" y="5" width="1" height="1"/>
+    </symbol>
+    <symbol id="g_R" overflow="visible">
+      <rect x="0" y="0" width="4" height="1"/>
+      <rect x="0" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/>
+      <rect x="0" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/>
+      <rect x="0" y="3" width="4" height="1"/>
+      <rect x="0" y="4" width="1" height="3"/>
+      <rect x="2" y="4" width="1" height="1"/>
+      <rect x="3" y="5" width="1" height="1"/>
+      <rect x="4" y="6" width="1" height="1"/>
+    </symbol>
+    <symbol id="g_T" overflow="visible">
+      <rect x="0" y="0" width="5" height="1"/>
+      <rect x="2" y="1" width="1" height="6"/>
+    </symbol>
+    <symbol id="g_O" overflow="visible">
+      <rect x="1" y="0" width="3" height="1"/>
+      <rect x="0" y="1" width="1" height="5"/>
+      <rect x="4" y="1" width="1" height="5"/>
+      <rect x="1" y="6" width="3" height="1"/>
+    </symbol>
+    <!-- arrow ▶ in 4x5, drawn shifted in y so it sits inside 5x7 grid -->
+    <symbol id="g_ARR" overflow="visible">
+      <rect x="0" y="1" width="1" height="5"/>
+      <rect x="1" y="2" width="1" height="3"/>
+      <rect x="2" y="3" width="1" height="1"/>
+    </symbol>
+  </defs>
+
+  <!-- BACKGROUND -->
+  <rect width="1200" height="320" fill="url(#bg)"/>
+
+  <!-- STARFIELD -->
+  <g fill="#ffffff">
+    <rect x="32"   y="20"  width="2" height="2" opacity="0.9"/>
+    <rect x="78"   y="55"  width="2" height="2" opacity="0.5"/>
+    <rect x="140"  y="14"  width="2" height="2" opacity="0.7"/>
+    <rect x="205"  y="42"  width="2" height="2" opacity="0.4"/>
+    <rect x="260"  y="80"  width="2" height="2" opacity="0.9"/>
+    <rect x="320"  y="22"  width="2" height="2" opacity="0.6"/>
+    <rect x="380"  y="62"  width="2" height="2" opacity="0.5"/>
+    <rect x="445"  y="18"  width="2" height="2" opacity="0.8"/>
+    <rect x="510"  y="48"  width="2" height="2" opacity="0.4"/>
+    <rect x="572"  y="82"  width="2" height="2" opacity="0.6"/>
+    <rect x="630"  y="20"  width="2" height="2" opacity="0.9"/>
+    <rect x="690"  y="60"  width="2" height="2" opacity="0.5"/>
+    <rect x="755"  y="32"  width="2" height="2" opacity="0.7"/>
+    <rect x="818"  y="72"  width="2" height="2" opacity="0.4"/>
+    <rect x="880"  y="22"  width="2" height="2" opacity="0.6"/>
+    <rect x="942"  y="56"  width="2" height="2" opacity="0.9"/>
+    <rect x="1002" y="14"  width="2" height="2" opacity="0.5"/>
+    <rect x="1060" y="48"  width="2" height="2" opacity="0.7"/>
+    <rect x="1120" y="80"  width="2" height="2" opacity="0.4"/>
+    <rect x="1170" y="30"  width="2" height="2" opacity="0.6"/>
+
+    <rect x="48"   y="240" width="2" height="2" opacity="0.7"/>
+    <rect x="105"  y="278" width="2" height="2" opacity="0.5"/>
+    <rect x="172"  y="252" width="2" height="2" opacity="0.9"/>
+    <rect x="238"  y="292" width="2" height="2" opacity="0.4"/>
+    <rect x="298"  y="262" width="2" height="2" opacity="0.6"/>
+    <rect x="365"  y="282" width="2" height="2" opacity="0.5"/>
+    <rect x="430"  y="248" width="2" height="2" opacity="0.8"/>
+    <rect x="495"  y="288" width="2" height="2" opacity="0.4"/>
+    <rect x="558"  y="258" width="2" height="2" opacity="0.6"/>
+    <rect x="618"  y="298" width="2" height="2" opacity="0.7"/>
+    <rect x="678"  y="252" width="2" height="2" opacity="0.5"/>
+    <rect x="742"  y="282" width="2" height="2" opacity="0.9"/>
+    <rect x="808"  y="262" width="2" height="2" opacity="0.4"/>
+    <rect x="870"  y="298" width="2" height="2" opacity="0.6"/>
+    <rect x="930"  y="248" width="2" height="2" opacity="0.7"/>
+    <rect x="990"  y="288" width="2" height="2" opacity="0.5"/>
+    <rect x="1052" y="262" width="2" height="2" opacity="0.8"/>
+    <rect x="1115" y="278" width="2" height="2" opacity="0.4"/>
+    <rect x="1170" y="248" width="2" height="2" opacity="0.6"/>
+  </g>
+
+  <!-- BIG STARS WITH SOFT GLOW -->
+  <g fill="#ffffff" filter="url(#softglow)">
+    <rect x="178" y="48"  width="3" height="3"/>
+    <rect x="725" y="38"  width="3" height="3"/>
+    <rect x="1100" y="62" width="3" height="3"/>
+    <rect x="92"  y="270" width="3" height="3"/>
+    <rect x="540" y="278" width="3" height="3"/>
+    <rect x="1010" y="252" width="3" height="3"/>
+  </g>
+
+  <!-- LEFT INVADER (pink, 8x8 squid) -->
+  <g>
+    <animateTransform attributeName="transform" type="translate" values="0 0; 0 6; 0 0" dur="1.8s" repeatCount="indefinite"/>
+    <g fill="#ff4488" transform="translate(110 120) scale(10)" filter="url(#softglow)">
+      <rect x="1" y="0" width="1" height="1"/><rect x="6" y="0" width="1" height="1"/>
+      <rect x="2" y="1" width="1" height="1"/><rect x="5" y="1" width="1" height="1"/>
+      <rect x="1" y="2" width="6" height="1"/>
+      <rect x="0" y="3" width="2" height="1"/><rect x="3" y="3" width="2" height="1"/><rect x="6" y="3" width="2" height="1"/>
+      <rect x="0" y="4" width="8" height="1"/>
+      <rect x="1" y="5" width="1" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="1" height="1"/>
+      <rect x="0" y="6" width="1" height="1"/><rect x="7" y="6" width="1" height="1"/>
+      <rect x="1" y="7" width="1" height="1"/><rect x="6" y="7" width="1" height="1"/>
+    </g>
+  </g>
+
+  <!-- RIGHT INVADER (cyan, 8x8 crab) -->
+  <g>
+    <animateTransform attributeName="transform" type="translate" values="0 0; 0 -6; 0 0" dur="1.8s" repeatCount="indefinite"/>
+    <g fill="#33ddff" transform="translate(1010 120) scale(10)" filter="url(#softglow)">
+      <rect x="2" y="0" width="4" height="1"/>
+      <rect x="1" y="1" width="6" height="1"/>
+      <rect x="0" y="2" width="8" height="1"/>
+      <rect x="0" y="3" width="2" height="1"/><rect x="3" y="3" width="2" height="1"/><rect x="6" y="3" width="2" height="1"/>
+      <rect x="0" y="4" width="8" height="1"/>
+      <rect x="2" y="5" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/>
+      <rect x="1" y="6" width="2" height="1"/><rect x="5" y="6" width="2" height="1"/>
+      <rect x="0" y="7" width="2" height="1"/><rect x="6" y="7" width="2" height="1"/>
+    </g>
+  </g>
+
+  <!-- TITLE: SPACE23 (pixel-rect, scale 12) -->
+  <!-- Total width = 7 glyphs * 5 + 6 gaps = 41 cells = 492 px @ scale 12 -->
+  <!-- Centered: x_start = (1200-492)/2 = 354 -->
+  <g fill="url(#title)" transform="translate(354 90) scale(12)" filter="url(#glow)">
+    <use href="#g_S" x="0"/>
+    <use href="#g_P" x="6"/>
+    <use href="#g_A" x="12"/>
+    <use href="#g_C" x="18"/>
+    <use href="#g_E" x="24"/>
+    <use href="#g_2" x="30"/>
+    <use href="#g_3" x="36"/>
+  </g>
+
+  <!-- INSERT COIN (pixel-rect, scale 5, blinking) -->
+  <!-- "▶ INSERT COIN" = 1 + 5 (INSERT) + 1 (gap) + 4 (COIN) = 11 glyphs + arrow with gaps -->
+  <!-- ARR(5) + gap + I(5)+g+N(5)+g+S(5)+g+E(5)+g+R(5)+g+T(5) + gap + C(5)+g+O(5)+g+I(5)+g+N(5) -->
+  <!-- = 5 + 1 + 5*6+5 + 5 + 5*4+3 + ... let me just compute total -->
+  <!-- ARR + 6*INSERT_glyphs - 1gap + 4_COIN_glyphs -->
+  <!-- More simply: 12 glyphs (ARR + 6 INSERT chars + 4 COIN chars + space-as-gap) all at 6-cell pitch -->
+  <!-- 12 glyphs * 6 - 1 = 71 cells = 355 px at scale 5; centered x_start = (1200-355)/2 = 422 -->
+  <g fill="#ffdd33" transform="translate(425 240) scale(5)" filter="url(#softglow)">
+    <animate attributeName="opacity" values="1;1;1;0.15;1" dur="1.4s" repeatCount="indefinite"/>
+    <use href="#g_ARR" x="0"/>
+    <use href="#g_I"   x="8"/>
+    <use href="#g_N"   x="14"/>
+    <use href="#g_S"   x="20"/>
+    <use href="#g_E"   x="26"/>
+    <use href="#g_R"   x="32"/>
+    <use href="#g_T"   x="38"/>
+    <use href="#g_C"   x="50"/>
+    <use href="#g_O"   x="56"/>
+    <use href="#g_I"   x="62"/>
+    <use href="#g_N"   x="68"/>
+  </g>
+
+  <!-- CRT SCANLINES (subtle, on top) -->
+  <g fill="#000000" opacity="0.18">
+    <rect y="0"   width="1200" height="2"/>
+    <rect y="6"   width="1200" height="2"/>
+    <rect y="12"  width="1200" height="2"/>
+    <rect y="18"  width="1200" height="2"/>
+    <rect y="24"  width="1200" height="2"/>
+    <rect y="30"  width="1200" height="2"/>
+    <rect y="36"  width="1200" height="2"/>
+    <rect y="42"  width="1200" height="2"/>
+    <rect y="48"  width="1200" height="2"/>
+    <rect y="54"  width="1200" height="2"/>
+    <rect y="60"  width="1200" height="2"/>
+    <rect y="66"  width="1200" height="2"/>
+    <rect y="72"  width="1200" height="2"/>
+    <rect y="78"  width="1200" height="2"/>
+    <rect y="84"  width="1200" height="2"/>
+    <rect y="90"  width="1200" height="2"/>
+    <rect y="96"  width="1200" height="2"/>
+    <rect y="102" width="1200" height="2"/>
+    <rect y="108" width="1200" height="2"/>
+    <rect y="114" width="1200" height="2"/>
+    <rect y="120" width="1200" height="2"/>
+    <rect y="126" width="1200" height="2"/>
+    <rect y="132" width="1200" height="2"/>
+    <rect y="138" width="1200" height="2"/>
+    <rect y="144" width="1200" height="2"/>
+    <rect y="150" width="1200" height="2"/>
+    <rect y="156" width="1200" height="2"/>
+    <rect y="162" width="1200" height="2"/>
+    <rect y="168" width="1200" height="2"/>
+    <rect y="174" width="1200" height="2"/>
+    <rect y="180" width="1200" height="2"/>
+    <rect y="186" width="1200" height="2"/>
+    <rect y="192" width="1200" height="2"/>
+    <rect y="198" width="1200" height="2"/>
+    <rect y="204" width="1200" height="2"/>
+    <rect y="210" width="1200" height="2"/>
+    <rect y="216" width="1200" height="2"/>
+    <rect y="222" width="1200" height="2"/>
+    <rect y="228" width="1200" height="2"/>
+    <rect y="234" width="1200" height="2"/>
+    <rect y="240" width="1200" height="2"/>
+    <rect y="246" width="1200" height="2"/>
+    <rect y="252" width="1200" height="2"/>
+    <rect y="258" width="1200" height="2"/>
+    <rect y="264" width="1200" height="2"/>
+    <rect y="270" width="1200" height="2"/>
+    <rect y="276" width="1200" height="2"/>
+    <rect y="282" width="1200" height="2"/>
+    <rect y="288" width="1200" height="2"/>
+    <rect y="294" width="1200" height="2"/>
+    <rect y="300" width="1200" height="2"/>
+    <rect y="306" width="1200" height="2"/>
+    <rect y="312" width="1200" height="2"/>
+  </g>
+
+  <!-- VIGNETTE -->
+  <radialGradient id="vig" cx="50%" cy="50%" r="65%">
+    <stop offset="60%" stop-color="#000000" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#000000" stop-opacity="0.7"/>
+  </radialGradient>
+  <rect width="1200" height="320" fill="url(#vig)"/>
+
+  <!-- BORDER -->
+  <rect x="2" y="2" width="1196" height="316" fill="none" stroke="#222222" stroke-width="2"/>
+</svg>
