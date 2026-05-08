@@ -227,6 +227,7 @@ func _ready() -> void:
 
 	# --- PLAYER (sopra tutto il gameplay) ---
 	add_child(player)
+	player.main = self  # wired before first _process / draw signal fires
 	player.z_index = 1
 	player.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 

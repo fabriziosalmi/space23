@@ -29,6 +29,13 @@ var friction: float = FRICTION
 var velocity = Vector2.ZERO
 var screen_size: Vector2
 
+# Typed ref to the Main orchestrator. Set by Main._ready right after add_child(player)
+# so it's already wired before the first _process / first draw signal fires. Replaces
+# the prior pattern of `var pn = get_parent(); if pn and pn.get("audio_manager") != null:`
+# which silently no-op'd on rename instead of failing fast (and accumulated ~30 LOC of
+# defensive checks across this file).
+var main: Main
+
 var roll = 0.0
 var time_passed = 0.0
 var ship_renderer: Node2D            # Node2D dedicato al disegno procedurale della nave
@@ -126,12 +133,8 @@ func _ready():
 func _on_trail_draw():
 	if trail_history.size() < 2: return
 
-	# Tier-3: trail color shifts toward white-hot on bass kicks. Letto
-	# defensively da get_parent().audio_manager.audio_low.
-	var bass_kick: float = 0.0
-	var pn = get_parent()
-	if pn and pn.get("audio_manager") != null:
-		bass_kick = pn.audio_manager.audio_low
+	# Tier-3: trail color shifts toward white-hot on bass kicks.
+	var bass_kick: float = main.audio_manager.audio_low
 	# Base color = neon blue Color(0.2, 1.5, 3.0). Su bass: lerp verso
 	# Color(2.5, 2.5, 3.0) (bianco-hot quasi). Subtle ma sentibile.
 	var trail_r: float = 0.2 + bass_kick * 2.3
@@ -176,9 +179,7 @@ func trigger_hit_flash() -> void:
 # copre la musica e si sente chiaramente sopra le esplosioni. Pan dalla pos
 # del player. Il railgun è escluso (RailgunSystem ha il suo SFX dedicato).
 func _play_shoot_sfx() -> void:
-	var pn = get_parent()
-	if pn and pn.has_method("get") and pn.get("audio_manager") != null:
-		pn.audio_manager.play_sfx(3.0, -10.0, position)
+	main.audio_manager.play_sfx(3.0, -10.0, position)
 
 # Disegna la nave proceduralmente: fusoliera + ali (con lighting L/R modulato dal
 # roll per un fake-3D), cockpit HDR audio-reattivo, trim neon che pulsa col bass,
@@ -195,16 +196,9 @@ func _on_ship_draw() -> void:
 
 	# === Reattività audio + HP (live-modulated colors) ===
 	# Tier-1 polish: il trim neon pulsa coi bass, il cockpit cambia colore e
-	# pulse-rate a HP basso. Letture difensive: se Main/AudioManager non sono
-	# pronti, default 0/full. Niente NPE in caso di edge timing.
-	var audio_low_now: float = 0.0
-	var hp_ratio: float = 1.0
-	var parent_node = get_parent()
-	if parent_node:
-		if parent_node.get("audio_manager") != null:
-			audio_low_now = parent_node.audio_manager.audio_low
-		if parent_node.get("player_hp") != null:
-			hp_ratio = clamp(float(parent_node.player_hp) / parent_node.PLAYER_HP_MAX, 0.0, 1.0)
+	# pulse-rate a HP basso.
+	var audio_low_now: float = main.audio_manager.audio_low
+	var hp_ratio: float = clamp(main.player_hp / Main.PLAYER_HP_MAX, 0.0, 1.0)
 	# 1.0 idle → ~1.55 a peak audio_low. Sotto soglia bloom = pulsazione neon
 	# leggera. Sopra → trim "vibra" sui kick.
 	var trim_glow_mult: float = 1.0 + audio_low_now * 0.55
@@ -309,7 +303,7 @@ func _process(delta):
 	time_passed += delta
 	var input_dir = Vector2.ZERO
 	
-	var engine_delta = delta * max(get_parent().global_speed_multiplier, 0.05)
+	var engine_delta = delta * max(main.global_speed_multiplier, 0.05)
 	
 	if fire_buff_timer > 0.0:
 		fire_buff_timer -= engine_delta
@@ -322,12 +316,11 @@ func _process(delta):
 		drone_shoot_timer -= engine_delta
 		if drone_shoot_timer <= 0:
 			drone_shoot_timer = DRONE_SHOOT_RATE
-			if get_parent().has_method("spawn_drone_bullet"):
-				var p1 = position + Vector2(cos(drone_angle), sin(drone_angle)) * 60.0
-				var p2 = position + Vector2(cos(drone_angle + PI), sin(drone_angle + PI)) * 60.0
-				var drone_color := Color(1.0, 0.5, 3.0)
-				get_parent().spawn_drone_bullet(p1, drone_color)
-				get_parent().spawn_drone_bullet(p2, drone_color)
+			var p1 = position + Vector2(cos(drone_angle), sin(drone_angle)) * 60.0
+			var p2 = position + Vector2(cos(drone_angle + PI), sin(drone_angle + PI)) * 60.0
+			var drone_color := Color(1.0, 0.5, 3.0)
+			main.spawn_drone_bullet(p1, drone_color)
+			main.spawn_drone_bullet(p2, drone_color)
 		
 	if can_move:
 		if Input.is_action_pressed("move_up"):    input_dir.y -= 1
@@ -340,10 +333,7 @@ func _process(delta):
 			# Compensa l'offset di shake della camera: get_global_mouse_position()
 			# include il camera offset, quindi senza compensazione il target balla
 			# con la camera e la nave segue il jitter (frustrante in mouse/touch).
-			var target_pos = get_global_mouse_position()
-			var main_node = get_parent()
-			if main_node and main_node.get("main_camera") != null:
-				target_pos -= main_node.main_camera.offset
+			var target_pos = get_global_mouse_position() - main.main_camera.offset
 			if position.distance_squared_to(target_pos) > 225.0:  # 15² — dead-zone
 				input_dir += (target_pos - position).normalized()
 
@@ -351,22 +341,19 @@ func _process(delta):
 		if (Input.is_action_pressed("fire") or is_touching) and shoot_timer <= 0:
 			if weapon_type == 1:
 				shoot_timer = SHOOT_RATE_RAILGUN
-				if get_parent().has_method("spawn_railgun"):
-					get_parent().spawn_railgun(position + Vector2(0, -30))
+				main.spawn_railgun(position + Vector2(0, -30))
 				# Railgun SFX è già emesso da RailgunSystem.spawn() — non duplicare.
 			elif fire_buff_timer > 0.0:
 				shoot_timer = SHOOT_RATE_BUFFED  # Più veloce e 4 cannoni!
-				if get_parent().has_method("spawn_player_bullet"):
-					get_parent().spawn_player_bullet(position + Vector2(-30, -10))
-					get_parent().spawn_player_bullet(position + Vector2(-15, -20))
-					get_parent().spawn_player_bullet(position + Vector2(15, -20))
-					get_parent().spawn_player_bullet(position + Vector2(30, -10))
+				main.spawn_player_bullet(position + Vector2(-30, -10))
+				main.spawn_player_bullet(position + Vector2(-15, -20))
+				main.spawn_player_bullet(position + Vector2(15, -20))
+				main.spawn_player_bullet(position + Vector2(30, -10))
 				_play_shoot_sfx()
 			else:
 				shoot_timer = SHOOT_RATE_NORMAL
-				if get_parent().has_method("spawn_player_bullet"):
-					get_parent().spawn_player_bullet(position + Vector2(-22, -10))
-					get_parent().spawn_player_bullet(position + Vector2(22, -10))
+				main.spawn_player_bullet(position + Vector2(-22, -10))
+				main.spawn_player_bullet(position + Vector2(22, -10))
 				_play_shoot_sfx()
 	
 	if dash_cooldown > 0:
