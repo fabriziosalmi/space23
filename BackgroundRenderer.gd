@@ -2,8 +2,10 @@ extends Node2D
 class_name BackgroundRenderer
 
 # Quanto la cassa (audio_low) accelera lo scroll del parallasse.
-# 0.0 = nessun effetto, 2.5 = a beat pieno (audio_bass≈1.0) lo scroll è 3.5x.
-const KICK_PARALLAX_BOOST: float = 2.5
+# 0.0 = nessun effetto, 3.5 = a beat pieno (audio_bass≈1.0) lo scroll è 4.5x.
+# Bumpato da 2.5: con player fermo + sezione musica calma il parallasse si
+# perdeva ("non scrolla") — adesso anche il floor del bass aggiunge swing.
+const KICK_PARALLAX_BOOST: float = 3.5
 
 # Real planet landmarks scrolling in the far layer. Order = solar system inner
 # → outer. Cycles when exhausted.
@@ -20,11 +22,11 @@ const PLANET_PATHS := [
 # Visual body diameter target, in px. Saturn's bbox is wider (rings) so we
 # scale by its body width, not its bbox. Indexes match PLANET_PATHS.
 const PLANET_BODY_WIDTHS := [206.0, 249.0, 253.0, 245.0, 244.0, 350.0, 255.0, 242.0]
-const PLANET_BODY_TARGET_PX: float = 600.0
-# Landmark "ghost" massicci: 600-800 px di body con alpha bassa = pianeta
-# enorme che attraversa tutto il viewport in 40-60s, sfumato perché è
-# scenografia, non focal point. Single-landmark guard impedisce overlap →
-# uno alla volta, sempre.
+const PLANET_BODY_TARGET_PX: float = 380.0
+# Landmark sfumati 380-520 px (era 600-800: troppo grossi, le PNG si vedevano
+# pixelate sui peak di scaling). Adesso scala max ~2× la sorgente PNG (256-350
+# px native) → bordi morbidi, no pixelation. Single-landmark guard lascia uno
+# alla volta sullo schermo, alpha bassa li tiene "fondali ghost".
 const PLANET_INTERVAL_PX: float = 3500.0  # spawn one every N pixels of accumulated distance
 const PLANET_SCROLL_SPEED: float = 22.0   # slow drift — landmarks come and go in ~50s
 # Keep this in sync with Main.scroll_speed so the planet pacing tracks the
@@ -43,9 +45,9 @@ const DEEP_CONFIGS := {
 	"galaxy": {
 		"path": "res://bg/galaxy_andromeda.png",
 		"interval_px": 8000.0,
-		"body_target": 700.0,
-		"scroll_base": 14.0,
-		"modulate": Color(0.7, 0.7, 0.85, 0.25),
+		"body_target": 480.0,
+		"scroll_base": 16.0,
+		"modulate": Color(0.92, 0.88, 1.0, 0.32),
 		"z": -9,
 		"tint_strength": 0.30,
 		"rim_strength": 0.70
@@ -53,9 +55,9 @@ const DEEP_CONFIGS := {
 	"nebula": {
 		"path": "res://bg/nebula_ring.png",
 		"interval_px": 9500.0,
-		"body_target": 800.0,
-		"scroll_base": 16.0,
-		"modulate": Color(0.85, 0.85, 0.85, 0.22),
+		"body_target": 520.0,
+		"scroll_base": 18.0,
+		"modulate": Color(1.0, 0.92, 0.95, 0.30),
 		"z": -9,
 		"tint_strength": 0.25,
 		"rim_strength": 0.45
@@ -63,9 +65,9 @@ const DEEP_CONFIGS := {
 	"blackhole": {
 		"path": "res://bg/blackhole_kerr.png",
 		"interval_px": 12000.0,
-		"body_target": 550.0,
-		"scroll_base": 14.0,
-		"modulate": Color(0.9, 0.9, 0.9, 0.35),
+		"body_target": 380.0,
+		"scroll_base": 16.0,
+		"modulate": Color(1.0, 1.0, 1.0, 0.42),
 		"z": -7,  # in front of planets — striking landmark
 		"tint_strength": 0.10,
 		"rim_strength": 0.30
@@ -73,9 +75,9 @@ const DEEP_CONFIGS := {
 	"cluster": {
 		"path": "res://bg/cluster_m13.png",
 		"interval_px": 6500.0,
-		"body_target": 400.0,
-		"scroll_base": 18.0,
-		"modulate": Color(0.85, 0.85, 0.78, 0.25),
+		"body_target": 280.0,
+		"scroll_base": 20.0,
+		"modulate": Color(1.0, 0.95, 0.82, 0.34),
 		"z": -8,
 		"tint_strength": 0.20,
 		"rim_strength": 0.30
@@ -537,11 +539,11 @@ func _spawn_planet() -> void:
 	var x_drift: float = randf_range(-12.0, 12.0)
 
 	sp.position = Vector2(rx, ry)
-	# Desaturazione + alpha 0.30: ghost gigante che scivola sullo sfondo,
-	# leggibile ma mai competitivo coi nemici/proiettili. Con il body_target
-	# bumpato a 600+, il pianeta riempie metà schermo: l'alpha bassa lo
-	# trasforma in una presenza atmosferica invece che un blocco opaco.
-	sp.modulate = Color(0.75, 0.73, 0.85, 0.30)
+	# Modulate vicino al bianco con leggera tinta blu-pearl, alpha 0.38: il
+	# pianeta mantiene i suoi colori naturali (no-grayscale-feeling) ma resta
+	# scenografia ghost. Era (0.75, 0.73, 0.85, 0.30) → troppo desaturato,
+	# user lamentava "scala di grigi".
+	sp.modulate = Color(0.95, 0.93, 1.0, 0.38)
 
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://shaders/planet.gdshader")

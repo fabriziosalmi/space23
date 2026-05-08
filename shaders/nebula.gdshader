@@ -65,41 +65,35 @@ void fragment() {
 	color = mix(color, c_neb1, smoothstep(0.1, 0.8, n1));
 	color = mix(color, c_neb2, smoothstep(0.2, 0.9, n2));
 
-	// --- BASS — pump c_neb1 (violet) on the kick, light touch on c_neb2 ---
-	// Bands deliberately split visually: bass dominates c_neb1, mid dominates
-	// c_neb2 (below). This way a kick-heavy section reads as "violet pulse"
-	// while a synth/pad section reads as "blue surge" — each band has its own
-	// visible signature instead of all of them just brightening everything.
-	//
-	// bass_baseline 2.5 = nebula sempre VIVIDA anche con audio_low=0. Le palette
-	// del gioco hanno c_neb1/c_neb2 max channel ≈ 0.15–0.45 (dark on purpose),
-	// quindi serve un baseline alto perché la moltiplicazione produca colori
-	// percettibili. A 1.5 sezioni quiete erano ancora troppo dim rispetto al
-	// TITLE (dove fake_pulse cycle a 0.20–0.70 dava bass_glow ≈ 5–7).
-	float bass_baseline = 2.5;
-	float bass_kick = audio_low * audio_low * 16.0;
+	// --- BASS — palette glow on c_neb1 + WARM RED tint band-specific ---
+	float bass_baseline = 2.0;
+	float bass_kick = audio_low * audio_low * 14.0;
 	color += c_neb1 * n1 * (bass_baseline + bass_kick);
-	color += c_neb2 * n2 * (bass_baseline * 0.5 + bass_kick * 0.15);
+	color += c_neb2 * n2 * (bass_baseline * 0.5 + bass_kick * 0.10);
 
-	// --- MID — pump c_neb2 + the fine n3 sub-cloud ---
-	// Linear gain on the main n2 cloud (more reactive than just the n3 micro-
-	// texture) plus the n3 detail tinted toward c_neb2.
+	// Tinta WARM ROSSO/ARANCIO band-specific: ogni cassa "stinge" la nebula
+	// di rosso. Indipendente dal palette, così è SEMPRE riconoscibile come
+	// "questo è bass" anche su track con palette già viola.
+	color += vec3(0.9, 0.35, 0.15) * audio_low * audio_low * smoothstep(0.35, 0.85, n1) * 1.2;
+
+	// --- MID — palette glow on c_neb2 + COOL CYAN/BLUE tint band-specific ---
 	float mid_glow = audio_mid * 2.5;
 	color += c_neb2 * n2 * mid_glow;
-	vec3 mid_tint = mix(c_neb1, c_neb2, 0.7);
-	color += mid_tint * n3 * (audio_mid * 3.5);
+	vec3 mid_tint_palette = mix(c_neb1, c_neb2, 0.7);
+	color += mid_tint_palette * n3 * (audio_mid * 2.5);
 
-	// --- HIGH — sparkle + bright cloud rim on percussion/hats ---
-	// Grid fine (400×225 = 90K celle ≈ 3×3 px per cella) ma threshold molto
-	// basso (0.002 a peak audio_high) così a peak fanno fuoco solo ~180 sparkle.
-	// Era 80×45 con 0.18: griglia troppo coarse, ogni sparkle veniva 16×16 px e
-	// sembravano "stelle enormi". Coverage molto sotto-soglia (0.0006 a
-	// audio_high=0.3) garantisce che nei passaggi di musica calmi le sparkle
-	// siano discrete, e a peak audio_high=1 ne firano ~180 puntiformi.
+	// Tinta COOL CIANO band-specific: synth/pad alzano una nube blu
+	// indipendente dal palette. Distintiva rispetto al bass red.
+	color += vec3(0.15, 0.55, 0.95) * audio_mid * smoothstep(0.4, 0.85, n2) * 0.85;
+
+	// --- HIGH — sparkle + PINK/MAGENTA shimmer band-specific ---
 	float sparkle_seed = hash21(floor(uv * 400.0) + floor(scroll_time * 2.0));
-	float sparkle = step(1.0 - audio_high * 0.002, sparkle_seed);
-	color += vec3(0.9, 0.82, 1.05) * sparkle;
-	color += vec3(1.0) * smoothstep(0.6, 0.88, n2) * audio_high * 0.4;
+	float sparkle = step(1.0 - audio_high * 0.003, sparkle_seed);
+	color += vec3(1.0, 0.85, 1.15) * sparkle;
+
+	// Shimmer ROSA/MAGENTA band-specific su hi-hats: tocco di pink sui peak
+	// del rumore, riconoscibile come "highs" indipendente dal palette.
+	color += vec3(0.95, 0.5, 1.0) * audio_high * smoothstep(0.65, 0.9, n2) * 0.7;
 
 	COLOR = vec4(color, 1.0);
 }

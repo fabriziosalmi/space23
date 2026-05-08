@@ -92,13 +92,15 @@ func _process(delta):
 		var mag_low = spectrum_analyzer.get_magnitude_for_frequency_range(20, 250).length()
 		var mag_mid = spectrum_analyzer.get_magnitude_for_frequency_range(250, 2000).length()
 		var mag_high = spectrum_analyzer.get_magnitude_for_frequency_range(2000, 10000).length()
-		# Gain × 4: i magnitudes raw del SpectrumAnalyzer in Godot sono in 0.05-0.3
-		# per musica normale; con × 2 audio_* saturava raramente a 1.0 (= dynamic
-		# range strangolato). × 4 con clamp permette ai beat forti di toccare il
-		# tetto, mentre i lerp con 10*delta smussano l'attacco.
-		audio_low = lerp(audio_low, clamp(mag_low * 4.0, 0.0, 1.0), 10.0 * delta)
-		audio_mid = lerp(audio_mid, clamp(mag_mid * 4.0, 0.0, 1.0), 10.0 * delta)
-		audio_high = lerp(audio_high, clamp(mag_high * 4.0, 0.0, 1.0), 10.0 * delta)
+		# Gain × 6 + lerp 18 (era × 4 / lerp 10): i raw magnitudes da
+		# SpectrumAnalyzer in Godot sono in 0.05-0.3 per musica normale, anche
+		# con × 4 i beat sui peak non saturavano abbastanza per produrre nubi
+		# "che cambiano colore". × 6 + clamp e attack più snappy garantisce che
+		# bass/mid/high abbiano dynamic range pieno [0..1], così il shader può
+		# disegnare bande visualmente distinte (red/cyan/pink).
+		audio_low = lerp(audio_low, clamp(mag_low * 6.0, 0.0, 1.0), 18.0 * delta)
+		audio_mid = lerp(audio_mid, clamp(mag_mid * 6.0, 0.0, 1.0), 18.0 * delta)
+		audio_high = lerp(audio_high, clamp(mag_high * 6.0, 0.0, 1.0), 18.0 * delta)
 
 func load_and_play_track(idx: int):
 	current_track_idx = idx
