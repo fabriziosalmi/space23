@@ -2,6 +2,11 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.8] - 2026-05-08
+
+### Added
+- **Perspective fan in `post.gdshader`.** New `perspective_fan` uniform (default `0.05`) that horizontally magnifies the top of the screen by 5 % while leaving the bottom unchanged. Gravity point is bottom-centre — the ship's default position. The warp is applied as the *first* UV transformation in the fragment shader, so the existing lateral pinch then operates on the fan-warped coordinates: the fish-eye underneath gets very slightly deformed by the V, as intended. Cheap (one mul, one add) and fully bypassable by setting the uniform to 0. Sells a subjective / first-person depth without committing to a real perspective rebuild.
+
 ## [0.1.7] - 2026-05-08
 
 Closes the background-direction work and lays out the v2 plan.

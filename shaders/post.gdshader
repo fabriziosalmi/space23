@@ -15,12 +15,29 @@ uniform float audio_bass = 0.0;
 // "punch" without inducing motion sickness.
 uniform vec2 ship_uv = vec2(0.5, 0.85);
 uniform float radial_blur = 0.0;
+// Perspective fan — magnifica orizzontalmente la parte alta dello schermo
+// rispetto al bottom (gravity point = bottom-center, ≈ posizione default
+// della nave). Vende "soggettività" / first-person feel. Applicata PRIMA
+// del pinch, così il pinch opera sulle UV già fan-warped (il fish-eye
+// sottostante viene "deformato leggermente" da questa V, come da intent).
+// Default 0.05 = top ~5% wider del bottom. 0.0 disattiva.
+uniform float perspective_fan = 0.05;
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
 
+	// --- Perspective Fan (gravity bottom-center) ---
+	// At uv.y=1 (bottom): v_scale = 1.0, niente warp sotto la nave.
+	// At uv.y=0 (top):    v_scale = 1.0 - perspective_fan (es. 0.95) →
+	//   sample_x = 0.5 + (uvx-0.5)*0.95, range source [0.025..0.975]
+	//   mappato su [0..1] dell'output → top appare 5% wider/magnified.
+	float v_scale = 1.0 - perspective_fan * (1.0 - uv.y);
+	uv.x = 0.5 + (uv.x - 0.5) * v_scale;
+
 	// --- Distorsione a Clessidra (Pinch Laterale) ---
-	// Tira le UV verso il centro lungo l'asse X in base all'altezza Y
+	// Tira le UV verso il centro lungo l'asse X in base all'altezza Y.
+	// Opera sulle UV già fan-warped sopra → il pinch viene moltiplicato
+	// dalla curva del fan, leggermente deformandosi nel passaggio.
 	vec2 center_dist = uv - vec2(0.5);
 	float pinch = sin(uv.y * 3.14159) * 0.06;
 	uv.x -= center_dist.x * pinch;
