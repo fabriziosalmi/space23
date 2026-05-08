@@ -50,6 +50,42 @@ float hash21(vec2 p) {
 	return fract(p.x * p.y);
 }
 
+// Procedural starfield: layer di stelle su griglia, scrolla verticalmente in
+// modo perfettamente loopabile (modulo nelle UV), twinkla con sin sul time
+// usando una phase per-stella, ogni stella ha una tinta leggera variata.
+//
+// Args:
+//   uv          : UV già "scrollate" dal caller
+//   density     : celle/UV (più alto = più piccole + più dense)
+//   appear_thr  : soglia hash sopra cui la cella ha una stella (es 0.985 = ~1.5%)
+//   core_radius : dimensione "punto" stella nella cella
+//   twinkle_hz  : frequenza twinkle in cicli/sec
+vec3 starfield_layer(vec2 uv, float density, float appear_thr, float core_radius, float twinkle_hz) {
+	vec2 cell = floor(uv * density);
+	float h = hash21(cell);
+	if (h < appear_thr) return vec3(0.0);
+
+	vec2 cell_uv = fract(uv * density);
+	vec2 jitter = vec2(hash21(cell + 1.7), hash21(cell + 7.3)) * 0.7 + 0.15;
+	float d = length(cell_uv - jitter);
+	float core = smoothstep(core_radius, 0.0, d);
+	if (core <= 0.0) return vec3(0.0);
+
+	// Twinkle per-stella (phase = h * 6.28). 0.45-1.0 amp così non spengono mai.
+	float phase = h * 31.4;
+	float twinkle = 0.45 + 0.55 * (0.5 + 0.5 * sin(scroll_time * twinkle_hz + phase));
+
+	// Tinta variata per stella: white / pale-blue / pale-yellow / pale-pink
+	float color_seed = hash21(cell + 13.7);
+	vec3 tint;
+	if      (color_seed < 0.55) tint = vec3(1.00, 0.98, 0.95);  // white-warm (most common)
+	else if (color_seed < 0.78) tint = vec3(0.85, 0.92, 1.00);  // pale blue
+	else if (color_seed < 0.93) tint = vec3(1.00, 0.95, 0.78);  // pale yellow
+	else                         tint = vec3(1.00, 0.82, 0.95); // pink
+
+	return tint * core * twinkle;
+}
+
 void fragment() {
 	vec2 uv = UV;
 	uv.y += scroll_time * 0.05;
@@ -94,6 +130,19 @@ void fragment() {
 	// Shimmer ROSA/MAGENTA band-specific su hi-hats: tocco di pink sui peak
 	// del rumore, riconoscibile come "highs" indipendente dal palette.
 	color += vec3(0.95, 0.5, 1.0) * audio_high * smoothstep(0.65, 0.9, n2) * 0.7;
+
+	// --- STARFIELD — 2 layer procedurali in loop, twinkle per-stella ---
+	// Sostituisce gran parte delle procedural draw lato CPU: stelle generate
+	// su griglia, scroll vertical via UV, twinkle via sin(time + phase),
+	// colori variati per stella (white/blue/yellow/pink). GPU-cheap, loop
+	// naturale (modulo UV), no spawn/cull, no allineamenti spuri.
+	vec2 star_uv1 = UV;
+	star_uv1.y += scroll_time * 0.04;
+	color += starfield_layer(star_uv1, 90.0, 0.985, 0.05, 3.5) * (0.7 + audio_mid * 0.4);
+
+	vec2 star_uv2 = UV;
+	star_uv2.y += scroll_time * 0.10;
+	color += starfield_layer(star_uv2, 50.0, 0.992, 0.08, 5.0) * 1.2 * (0.8 + audio_high * 0.5);
 
 	COLOR = vec4(color, 1.0);
 }

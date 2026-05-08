@@ -44,7 +44,7 @@ const BOSS_TYPE_INDEX: int = 5
 # Player HP / Camera
 const PLAYER_HP_MAX: float = 100.0
 const PLAYER_HEAL: float = 40.0
-const CAMERA_SHAKE_MAX: float = 80.0
+const CAMERA_SHAKE_MAX: float = 45.0  # ridotto da 80: a peak ±80px era motion-sick territory
 const INTRO_ZOOM: float = 4.0
 const GAMEOVER_ZOOM: float = 2.5
 
