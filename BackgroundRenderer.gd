@@ -20,12 +20,13 @@ const PLANET_PATHS := [
 # Visual body diameter target, in px. Saturn's bbox is wider (rings) so we
 # scale by its body width, not its bbox. Indexes match PLANET_PATHS.
 const PLANET_BODY_WIDTHS := [206.0, 249.0, 253.0, 245.0, 244.0, 350.0, 255.0, 242.0]
-const PLANET_BODY_TARGET_PX: float = 150.0
-# Pacing 2× pi� lento: i pianeti sono landmark, devono sentirsi rari. Prima
-# 1800/55 → uno ogni ~12-18s + scroll molto rapido = sembravano "sciamati".
-# Ora ~30-40s tra l'uno e l'altro e drift verticale dimezzato.
+const PLANET_BODY_TARGET_PX: float = 600.0
+# Landmark "ghost" massicci: 600-800 px di body con alpha bassa = pianeta
+# enorme che attraversa tutto il viewport in 40-60s, sfumato perché è
+# scenografia, non focal point. Single-landmark guard impedisce overlap →
+# uno alla volta, sempre.
 const PLANET_INTERVAL_PX: float = 3500.0  # spawn one every N pixels of accumulated distance
-const PLANET_SCROLL_SPEED: float = 28.0   # parallax dimezzato: planets float through, non corrono
+const PLANET_SCROLL_SPEED: float = 22.0   # slow drift — landmarks come and go in ~50s
 # Keep this in sync with Main.scroll_speed so the planet pacing tracks the
 # global "distance" counter (a planet should appear every PLANET_INTERVAL_PX
 # of in-game distance under default time dilation).
@@ -42,9 +43,9 @@ const DEEP_CONFIGS := {
 	"galaxy": {
 		"path": "res://bg/galaxy_andromeda.png",
 		"interval_px": 8000.0,
-		"body_target": 240.0,
-		"scroll_base": 18.0,
-		"modulate": Color(0.7, 0.7, 0.85, 0.42),
+		"body_target": 700.0,
+		"scroll_base": 14.0,
+		"modulate": Color(0.7, 0.7, 0.85, 0.25),
 		"z": -9,
 		"tint_strength": 0.30,
 		"rim_strength": 0.70
@@ -52,9 +53,9 @@ const DEEP_CONFIGS := {
 	"nebula": {
 		"path": "res://bg/nebula_ring.png",
 		"interval_px": 9500.0,
-		"body_target": 220.0,
-		"scroll_base": 20.0,
-		"modulate": Color(0.85, 0.85, 0.85, 0.40),
+		"body_target": 800.0,
+		"scroll_base": 16.0,
+		"modulate": Color(0.85, 0.85, 0.85, 0.22),
 		"z": -9,
 		"tint_strength": 0.25,
 		"rim_strength": 0.45
@@ -62,9 +63,9 @@ const DEEP_CONFIGS := {
 	"blackhole": {
 		"path": "res://bg/blackhole_kerr.png",
 		"interval_px": 12000.0,
-		"body_target": 200.0,
-		"scroll_base": 18.0,
-		"modulate": Color(0.9, 0.9, 0.9, 0.55),
+		"body_target": 550.0,
+		"scroll_base": 14.0,
+		"modulate": Color(0.9, 0.9, 0.9, 0.35),
 		"z": -7,  # in front of planets — striking landmark
 		"tint_strength": 0.10,
 		"rim_strength": 0.30
@@ -72,9 +73,9 @@ const DEEP_CONFIGS := {
 	"cluster": {
 		"path": "res://bg/cluster_m13.png",
 		"interval_px": 6500.0,
-		"body_target": 140.0,
-		"scroll_base": 24.0,
-		"modulate": Color(0.85, 0.85, 0.78, 0.42),
+		"body_target": 400.0,
+		"scroll_base": 18.0,
+		"modulate": Color(0.85, 0.85, 0.78, 0.25),
 		"z": -8,
 		"tint_strength": 0.20,
 		"rim_strength": 0.30
@@ -365,14 +366,15 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 	queue_redraw()
 
 func _has_visible_landmark() -> bool:
-	# "Visible" = già in viewport o entro 150px sopra di esso (sta per entrare).
-	# Usato per il guard "mai due landmark insieme": se uno è on-screen,
-	# qualunque altro spawn (planet o deep) viene posticipato.
+	# "Visible" = sprite gia parzialmente in viewport o sta per entrare. Range
+	# generoso (-500..screen+300) perche i landmark sono ora 400-800 px → il
+	# guard deve considerare lo sprite come "visibile" anche con il centro
+	# fuori viewport, finche i bordi sono dentro.
 	for c in planet_layer.get_children():
-		if c is Sprite2D and c.position.y > -150 and c.position.y < screen_size.y + 100:
+		if c is Sprite2D and c.position.y > -500 and c.position.y < screen_size.y + 300:
 			return true
 	for c in deep_layer.get_children():
-		if c is Sprite2D and c.position.y > -150 and c.position.y < screen_size.y + 100:
+		if c is Sprite2D and c.position.y > -500 and c.position.y < screen_size.y + 300:
 			return true
 	return false
 
@@ -409,7 +411,7 @@ func _tick_planets(delta: float, effective_speed: float, player_vel_x: float = 0
 			sp.material.set_shader_parameter("tint", current_palette_tint)
 			sp.material.set_shader_parameter("audio_low", last_audio_low)
 
-		if sp.position.y > screen_size.y + 200:
+		if sp.position.y > screen_size.y + 450:
 			sp.queue_free()
 
 func _tick_deep_landmarks(delta: float, effective_speed: float, player_vel_x: float = 0.0) -> void:
@@ -441,7 +443,7 @@ func _tick_deep_landmarks(delta: float, effective_speed: float, player_vel_x: fl
 		if sp.material:
 			sp.material.set_shader_parameter("tint", current_palette_tint)
 			sp.material.set_shader_parameter("audio_low", last_audio_low)
-		if sp.position.y > screen_size.y + 250:
+		if sp.position.y > screen_size.y + 500:
 			sp.queue_free()
 
 func _spawn_deep_landmark(kind: String) -> void:
@@ -466,12 +468,12 @@ func _spawn_deep_landmark(kind: String) -> void:
 	sp.scale = Vector2(scale_factor, scale_factor)
 
 	# Spread across screen with margin so the body doesn't clip; randomized.
-	# Spawn appena sopra il viewport (-180..-280) così il landmark è visibile
-	# in pochi secondi dopo lo spawn — era -360..-600 e con scroll a 12-28 px/sec
-	# servivano 15-50s di traversata prima che entrasse in scena.
+	# Spawn ry alta (-450..-600) perché i landmark adesso sono giganti (body
+	# fino a 800 px). Con half_height ~400, ry=-500 mette il bottom del sprite
+	# a y=-100 (appena sopra il viewport): il landmark "scivola dentro" pulito.
 	var margin: float = 220.0
 	var rx: float = randf_range(margin, screen_size.x - margin)
-	var ry: float = -randf_range(180, 280)
+	var ry: float = -randf_range(450, 600)
 	sp.position = Vector2(rx, ry)
 	sp.modulate = cfg["modulate"]
 	sp.rotation = randf_range(-0.4, 0.4)  # slight tilt — these are not "facing camera"
@@ -525,20 +527,21 @@ func _spawn_planet() -> void:
 	else:
 		rx = randf_range(half + 40, screen_size.x - margin)
 
-	# Y entry jitter — spawn appena sopra il viewport così il pianeta è visibile
-	# entro 1-2s. Era -260..-480 con scroll 22 px/sec → 12-22s di traversata
-	# prima che entrasse in scena.
-	var ry: float = -randf_range(120, 200)
+	# Y entry jitter — spawn ben sopra il viewport perché il pianeta è enorme
+	# (body 600 + jitter scale = sprite ~600-700 px). ry=-400 lascia il bottom
+	# del sprite appena sopra al viewport top, scivola dentro in modo organico.
+	var ry: float = -randf_range(380, 500)
 
 	# A slow horizontal drift gives the impression they're crossing the scene
 	# rather than scrolling vertically in lockstep.
 	var x_drift: float = randf_range(-12.0, 12.0)
 
 	sp.position = Vector2(rx, ry)
-	# Desaturazione + alpha basso per leggerli come "fondale": il pianeta
-	# scenografia, non un focal point. 0.55 alpha = ben visibile ma non
-	# competitivo coi nemici/proiettili in foreground.
-	sp.modulate = Color(0.78, 0.76, 0.85, 0.55)
+	# Desaturazione + alpha 0.30: ghost gigante che scivola sullo sfondo,
+	# leggibile ma mai competitivo coi nemici/proiettili. Con il body_target
+	# bumpato a 600+, il pianeta riempie metà schermo: l'alpha bassa lo
+	# trasforma in una presenza atmosferica invece che un blocco opaco.
+	sp.modulate = Color(0.75, 0.73, 0.85, 0.30)
 
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://shaders/planet.gdshader")
