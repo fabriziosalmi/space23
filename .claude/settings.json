@@ -3,7 +3,9 @@
     "allow": [
       "Bash(git remote *)",
       "Bash(git fetch *)",
-      "Bash(git lfs *)"
+      "Bash(git lfs *)",
+      "Bash(curl -sL https://fabriziosalmi.github.io/space23/index.html)",
+      "Bash(curl -sLI https://fabriziosalmi.github.io/space23/audio-fix.js)"
     ]
   }
 }

@@ -169,11 +169,17 @@ func _ready():
 	bomb_button.hide()  # mostrato all'inizio partita su mobile/web (vedi _show_play_ui)
 	add_child(bomb_button)
 
-	# Game Over UI
+	# Game Over UI.
+	# Bias verticale: "GAME OVER" (48pt rosso) è il primo figlio e l'ancora
+	# visiva pesante. Con un VBoxContainer matematicamente centrato, il blocco
+	# è geometricamente al centro ma il *baricentro percepito* finisce sotto
+	# (perché GAME OVER è la massa). Scostiamo il container 30 logical px in
+	# alto per spostare il GAME OVER vicino al centro schermo dove l'occhio se
+	# l'aspetta.
 	game_over_container = VBoxContainer.new()
 	game_over_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	game_over_container.size = Vector2(600, 400)
-	game_over_container.position = Vector2(screen_size.x / 2.0 - 300, screen_size.y / 2.0 - 200)
+	game_over_container.position = Vector2(screen_size.x / 2.0 - 300, screen_size.y / 2.0 - 230)
 	game_over_container.hide()
 	
 	var go_label = Label.new()

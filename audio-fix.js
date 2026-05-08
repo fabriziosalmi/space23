@@ -1,48 +1,66 @@
 // SPACE23 — AudioContext autoplay unlock for web build.
 //
-// Chrome and Firefox suspend every AudioContext at creation until the user
-// performs a gesture on the document. Godot 4.4 attaches a resume() handler
-// to the canvas, but it can race with engine init or miss clicks that land
-// on Control nodes; on GitHub Pages this manifests as a silent game.
+// Browsers suspend every AudioContext at creation until a user gesture lands
+// on the document. Godot 4.4's web export attaches a resume() handler to the
+// canvas, but it can race with engine init or miss clicks that fall on
+// Control nodes; on GitHub Pages this manifests as a silent game.
 //
 // Strategy:
 //   1. Hook the AudioContext constructor so every instance the engine creates
 //      gets registered.
-//   2. On any user gesture at window level (click, touch, key, pointer),
-//      iterate the registered instances and resume() the suspended ones.
+//   2. On any user gesture, iterate the registered instances and resume() the
+//      suspended ones. We listen in CAPTURE phase on both window AND document,
+//      so we get the event before any canvas listener can stopPropagation.
 //
-// This runs before Godot loads (it's in <head>), so the constructor hook is
-// in place by the time Godot creates its audio context.
+// Loaded from <head>, so the constructor hook is in place before Godot's
+// index.js runs.
 
 (function () {
-  var Native = window.AudioContext || window.webkitAudioContext;
-  if (!Native) return;
+  'use strict';
+  var W = window;
+  var Native = W.AudioContext || W.webkitAudioContext;
+  if (!Native) {
+    console.warn('[audio-fix] AudioContext not available in this browser');
+    return;
+  }
 
   var instances = [];
 
-  function Wrap() {
-    var ctx = new Native(...arguments);
+  function Hook() {
+    // Reflect.construct preserves `new.target` and the proper [[Construct]]
+    // invocation; safer than `new Native(...arguments)` across edge cases.
+    var ctx = Reflect.construct(Native, arguments, Hook);
     instances.push(ctx);
+    console.log('[audio-fix] AudioContext registered (state=' + ctx.state + ', total=' + instances.length + ')');
     return ctx;
   }
-  Wrap.prototype = Native.prototype;
-  // Preserve `instanceof` checks (Godot may use them).
-  Object.setPrototypeOf(Wrap, Native);
+  Hook.prototype = Native.prototype;
 
-  window.AudioContext = Wrap;
-  if (window.webkitAudioContext) window.webkitAudioContext = Wrap;
+  W.AudioContext = Hook;
+  if (W.webkitAudioContext) W.webkitAudioContext = Hook;
 
-  function resumeAll() {
+  function resumeAll(triggerEvent) {
     for (var i = 0; i < instances.length; i++) {
       var c = instances[i];
       if (c && c.state === 'suspended') {
-        c.resume().catch(function () { /* ignore */ });
+        var idx = i;
+        c.resume().then(function () {
+          console.log('[audio-fix] resumed (event=' + (triggerEvent && triggerEvent.type) + ', idx=' + idx + ')');
+        }).catch(function (err) {
+          console.warn('[audio-fix] resume() failed:', err);
+        });
       }
     }
   }
 
-  var events = ['click', 'touchstart', 'keydown', 'pointerdown'];
-  events.forEach(function (ev) {
-    window.addEventListener(ev, resumeAll, { passive: true });
-  });
+  // Capture phase + both window and document so we still catch the event even
+  // if a canvas-level listener calls stopPropagation. `passive: true` keeps
+  // the page responsive on touch.
+  var EVENTS = ['click', 'mousedown', 'touchstart', 'touchend', 'keydown', 'pointerdown'];
+  for (var i = 0; i < EVENTS.length; i++) {
+    W.addEventListener(EVENTS[i], resumeAll, { capture: true, passive: true });
+    document.addEventListener(EVENTS[i], resumeAll, { capture: true, passive: true });
+  }
+
+  console.log('[audio-fix] installed (Native=' + Native.name + ')');
 })();
