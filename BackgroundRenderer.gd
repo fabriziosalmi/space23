@@ -621,8 +621,24 @@ func _draw():
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			
 		elif e.type == "comet":
-			draw_circle(e.pos, 3.0, Color(2.0, 3.5, 5.0))
+			# Edge-fade per nascondere il loop reset (teleport bottom→top): user
+			# vedeva uno "scatto"/disturbo quando la cometa wrapava. Con alpha
+			# fade nei 80px ai bordi del viewport, il teleport avviene mentre la
+			# cometa è invisibile → percepito come due comete diverse, non come
+			# un loop visibile.
+			var fade: float = 1.0
+			if e.pos.y < 80.0:
+				fade = clamp(e.pos.y / 80.0, 0.0, 1.0)
+			elif e.pos.y > screen_size.y - 80.0:
+				fade = clamp((screen_size.y - e.pos.y) / 80.0, 0.0, 1.0)
+			if e.pos.x < 80.0:
+				fade = min(fade, clamp(e.pos.x / 80.0, 0.0, 1.0))
+			elif e.pos.x > screen_size.x - 80.0:
+				fade = min(fade, clamp((screen_size.x - e.pos.x) / 80.0, 0.0, 1.0))
+			if fade <= 0.01:
+				continue
+			draw_circle(e.pos, 3.0, Color(2.0 * fade, 3.5 * fade, 5.0 * fade))
 			var mid = e.pos - e.dir * (e.length * 0.3)
 			var end = e.pos - e.dir * e.length
-			draw_line(e.pos, mid, Color(1.0, 2.0, 4.0, 0.8), 2.0)
-			draw_line(mid, end, Color(0.5, 1.0, 3.0, 0.2), 1.0)
+			draw_line(e.pos, mid, Color(1.0 * fade, 2.0 * fade, 4.0 * fade, 0.8 * fade), 2.0)
+			draw_line(mid, end, Color(0.5 * fade, 1.0 * fade, 3.0 * fade, 0.2 * fade), 1.0)

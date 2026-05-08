@@ -126,7 +126,18 @@ func _ready():
 
 func _on_trail_draw():
 	if trail_history.size() < 2: return
-	
+
+	# Tier-3: trail color shifts toward white-hot on bass kicks. Letto
+	# defensively da get_parent().audio_manager.audio_low.
+	var bass_kick: float = 0.0
+	var pn = get_parent()
+	if pn and pn.get("audio_manager") != null:
+		bass_kick = pn.audio_manager.audio_low
+	# Base color = neon blue Color(0.2, 1.5, 3.0). Su bass: lerp verso
+	# Color(2.5, 2.5, 3.0) (bianco-hot quasi). Subtle ma sentibile.
+	var trail_r: float = 0.2 + bass_kick * 2.3
+	var trail_g: float = 1.5 + bass_kick * 1.0
+	var trail_b: float = 3.0 + bass_kick * 0.0  # blu già al massimo
 	# Disegna le scie laterali (sulle ali)
 	for side in [-1, 1]:
 		var pts = PackedVector2Array()
@@ -135,10 +146,10 @@ func _on_trail_draw():
 			var offset = Vector2(25 * side, 10).rotated(p.rot)
 			# Trasforma da globale a locale per il trail_node
 			pts.append(p.pos - trail_node.global_position + offset)
-			
+
 		for i in range(pts.size() - 1):
 			var alpha = 1.0 - (float(i) / trail_history.size())
-			trail_node.draw_line(pts[i], pts[i+1], Color(0.2, 1.5, 3.0, alpha), 4.0 * alpha)
+			trail_node.draw_line(pts[i], pts[i+1], Color(trail_r, trail_g, trail_b, alpha), 4.0 * alpha)
 			
 	# Se stiamo dashando, disegna anche una scia centrale massiccia
 	if is_dashing:
@@ -224,6 +235,24 @@ func _on_ship_draw() -> void:
 	var WING_BACK_L := Vector2(-28, 23)
 	var WING_TIP_R := Vector2(55, 14)
 	var WING_BACK_R := Vector2(28, 23)
+
+	# === Tier-2: Damage deformation ===
+	# Sotto soglia 60% HP, applica piccoli offset deterministici (basati su
+	# hp_low + position seed) ai vertici esterni delle ali e della coda.
+	# A HP=60% no dent, a HP=0% massimo. Determinista (no jitter random
+	# per-frame che farebbe vibrare la silhouette in modo nervoso).
+	var damage: float = clamp((1.0 - hp_ratio - 0.4) / 0.6, 0.0, 1.0)
+	if damage > 0.0:
+		var d_amp: float = damage * 6.0
+		# Offsets per-vertice: usa coords come seed → coerenti, non variano nel tempo
+		WING_TIP_L += Vector2(d_amp * 0.4, -d_amp * 0.6)
+		WING_BACK_L += Vector2(d_amp * 0.3, d_amp * 0.4)
+		WING_TIP_R += Vector2(-d_amp * 0.5, d_amp * 0.3)
+		WING_BACK_R += Vector2(-d_amp * 0.2, -d_amp * 0.5)
+		HULL_BACK_L += Vector2(d_amp * 0.4, 0)
+		HULL_BACK_R += Vector2(-d_amp * 0.3, 0)
+		# A HP basso, anche il muso si "incrina" verso un lato
+		NOSE += Vector2(d_amp * 0.5, d_amp * 0.4)
 
 	# === ALI ===
 	var left_wing := PackedVector2Array([HULL_MID_L, WING_TIP_L, WING_BACK_L, HULL_BACK_L])
@@ -415,8 +444,13 @@ func _process(delta):
 	# Applica lo stesso bob ai motori (siblings di ship_renderer, non figli):
 	# senza questo, il corpo fluttua su/giù mentre gli ugelli restano fermi e
 	# si vede una desincronizzazione fastidiosa.
+	# Tier-2: vector thrust → i flame ruotano in opposto al roll, simulando
+	# motori che orientano la spinta in curva. Roll +0.25 (right banking) →
+	# flame ruotano di -0.18 rad (verso sinistra) come reazione fisica.
+	var flame_thrust_rot: float = -roll * 0.7
 	for i in flames.size():
 		flames[i].position.y = flame_base_y[i] + ship_bob
+		flames[i].rotation = flame_thrust_rot
 
 	# Aggiorna l'intensità del fuoco nel material
 	if flame_mat:

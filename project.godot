@@ -26,6 +26,11 @@ boot_splash/show_image=true
 boot_splash/image="res://boot.png"
 boot_splash/bg_color=Color(0, 0, 0, 1)
 boot_splash/use_filter=true
+# fullsize=true: scala l'immagine per fillare l'intero viewport (con bg_color
+# nelle eventuali bande di letterboxing). Senza, l'immagine 1280×1280 veniva
+# centrata in un canvas più piccolo e il browser body color (white) si vedeva
+# attorno.
+boot_splash/fullsize=true
 
 [display]
 

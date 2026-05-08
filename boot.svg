@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <defs>
     <filter id="g" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="2.5"/>
+      <feGaussianBlur stdDeviation="4"/>
       <feMerge>
         <feMergeNode/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
     <filter id="bigg" x="-100%" y="-100%" width="300%" height="300%">
-      <feGaussianBlur stdDeviation="6"/>
+      <feGaussianBlur stdDeviation="10"/>
       <feMerge>
         <feMergeNode/>
         <feMergeNode in="SourceGraphic"/>
@@ -27,12 +27,12 @@
     </linearGradient>
   </defs>
 
-  <!-- pure black background -->
-  <rect width="256" height="256" fill="#000000"/>
+  <!-- pure black background — full 16:9 → fills viewport with fullsize=true -->
+  <rect width="1280" height="720" fill="#000000"/>
 
   <!-- Ship — coordinate matching Player.gd ship_renderer (NOSE, WINGS, ENGINE_L/R)
-       Scaled 1.8x and centered at (128, 132). Origin = ship center. -->
-  <g transform="translate(128 132) scale(1.8)">
+       Scaled 4x and centered at (640, 350). Origin = ship center. -->
+  <g transform="translate(640 350) scale(4)">
     <!-- ENGINE FLAMES (behind body) -->
     <ellipse cx="0"   cy="42" rx="7"   ry="24" fill="url(#flame)" filter="url(#bigg)" opacity="0.9"/>
     <ellipse cx="-22" cy="40" rx="4.5" ry="18" fill="url(#flame)" filter="url(#bigg)" opacity="0.8"/>
