@@ -8,7 +8,10 @@
       "Bash(curl -sLI https://fabriziosalmi.github.io/space23/audio-fix.js)",
       "Bash(sed -n '20,40p' systems/PowerupSystem.gd)",
       "Bash(sed -n '1,55p' systems/BlackHoleSystem.gd)",
-      "Bash(qlmanage -t -s 1280 -o /tmp/svgrender boot.svg)"
+      "Bash(qlmanage -t -s 1280 -o /tmp/svgrender boot.svg)",
+      "Bash(/Applications/Godot.app/Contents/MacOS/Godot --headless --check-only --quit)",
+      "Bash(/Applications/Godot.app/Contents/MacOS/Godot --headless --quit-after 5 --quit)",
+      "Bash(/Applications/Godot.app/Contents/MacOS/Godot --headless --path /Users/fab/Documents/git/space23 --quit-after 30)"
     ]
   }
 }

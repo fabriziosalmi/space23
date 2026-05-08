@@ -19,7 +19,6 @@ const DASH_SPEED_MULT: float = 4.0
 const SHOOT_RATE_NORMAL: float = 0.12
 const SHOOT_RATE_BUFFED: float = 0.08
 const SHOOT_RATE_RAILGUN: float = 0.5
-const SHOOT_RATE_MIRROR_LASER: float = 0.15
 const DRONE_SHOOT_RATE: float = 0.15
 
 # Compat: alcuni accessi vengono ancora fatti via `player.max_speed`. I keep `max_speed`
@@ -315,13 +314,12 @@ func _process(delta):
 		drone_shoot_timer -= engine_delta
 		if drone_shoot_timer <= 0:
 			drone_shoot_timer = DRONE_SHOOT_RATE
-			if get_parent().has_method("spawn_player_bullet"):
+			if get_parent().has_method("spawn_drone_bullet"):
 				var p1 = position + Vector2(cos(drone_angle), sin(drone_angle)) * 60.0
 				var p2 = position + Vector2(cos(drone_angle + PI), sin(drone_angle + PI)) * 60.0
-				# Bug pre-esistente: il 2° arg e' `dir: Vector2`, non `color`.
-				# Passiamo Vector2.UP esplicito così il Color finisce nel suo slot.
-				get_parent().spawn_player_bullet(p1, Vector2.UP, Color(1.0, 0.5, 3.0))
-				get_parent().spawn_player_bullet(p2, Vector2.UP, Color(1.0, 0.5, 3.0))
+				var drone_color := Color(1.0, 0.5, 3.0)
+				get_parent().spawn_drone_bullet(p1, drone_color)
+				get_parent().spawn_drone_bullet(p2, drone_color)
 		
 	if can_move:
 		if Input.is_action_pressed("move_up"):    input_dir.y -= 1
@@ -347,11 +345,6 @@ func _process(delta):
 				shoot_timer = SHOOT_RATE_RAILGUN
 				if get_parent().has_method("spawn_railgun"):
 					get_parent().spawn_railgun(position + Vector2(0, -30))
-			elif weapon_type == 2:
-				shoot_timer = SHOOT_RATE_MIRROR_LASER
-				if get_parent().has_method("spawn_player_bullet"):
-					get_parent().spawn_player_bullet(position + Vector2(0, -20), Vector2(-0.8, -1).normalized(), Color(0.2, 3.0, 1.5), 3)
-					get_parent().spawn_player_bullet(position + Vector2(0, -20), Vector2(0.8, -1).normalized(), Color(0.2, 3.0, 1.5), 3)
 			elif fire_buff_timer > 0.0:
 				shoot_timer = SHOOT_RATE_BUFFED  # Più veloce e 4 cannoni!
 				if get_parent().has_method("spawn_player_bullet"):

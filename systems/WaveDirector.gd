@@ -28,7 +28,13 @@ const PHASE_BUILDUP_LEAD: float = 3.0
 const PHASE_DROP_HIT_WINDOW: float = 1.0
 const PHASE_POST_DROP_START: float = 3.0
 const PHASE_POST_DROP_END: float = 6.0
-var _drop_force_fired: bool = false  # one-shot per drop event
+
+# One-shot guard del drop, keyed sull'indice della traccia. -1 = non sparato.
+# Era un bool; il bool poteva restare "stuck" se la pos faceva jitter o se
+# si saltava traccia mentre il flag era true. Memorizzando l'indice, il flag
+# si invalida automaticamente al cambio traccia, e la doppia reset path
+# (buildup branch + deep normal/pre branch) gestisce loop e seek.
+var _drop_fired_for_track: int = -1
 
 func load_from_json(path: String) -> void:
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -51,7 +57,7 @@ func reset(initial_timer: float = 3.0) -> void:
 	waves_since_filler = 0
 	wave_index = 0
 	wave_timer = initial_timer
-	_drop_force_fired = false
+	_drop_fired_for_track = -1
 
 func tick(delta: float, distance: float, screen_size: Vector2) -> void:
 	# Phase coupling con la musica: il vero "AI Director" è la traccia. Calcoliamo
@@ -59,28 +65,40 @@ func tick(delta: float, distance: float, screen_size: Vector2) -> void:
 	var phase_mult: float = 1.0
 	var phase: String = "normal"
 	if audio_manager and audio_manager.audio_stream_player and audio_manager.audio_stream_player.stream:
+		var current_idx: int = audio_manager.current_track_idx
+		# Track change auto-invalidates the drop guard: la nuova traccia ha il
+		# suo drop_time e deve poter fire-are indipendentemente da cosa è
+		# successo nella precedente.
+		if _drop_fired_for_track != -1 and _drop_fired_for_track != current_idx:
+			_drop_fired_for_track = -1
+
 		var pos: float = audio_manager.get_playback_position()
 		var drop: float = audio_manager.get_current_drop_time()
 		var dt: float = pos - drop  # offset dal drop (negativo = pre-drop)
 		if dt < 0.0 and dt > -PHASE_BUILDUP_LEAD:
 			phase = "buildup"
 			phase_mult = 1.5  # rallenta spawn → tensione, anticipazione
-			_drop_force_fired = false
+			_drop_fired_for_track = -1
 		elif dt >= 0.0 and dt < PHASE_DROP_HIT_WINDOW:
 			phase = "drop"
 			# Force-spawn one-shot al primo frame post-drop: butta in arena una raffica.
-			if not _drop_force_fired:
-				_drop_force_fired = true
+			# Guard track-keyed: se è già stato sparato per questa traccia, skip.
+			if _drop_fired_for_track != current_idx:
+				_drop_fired_for_track = current_idx
 				wave_timer = 0.0  # consumiamo subito una wave
 			phase_mult = 0.6  # spawn più frequenti durante il drop
 		elif dt >= PHASE_POST_DROP_START and dt < PHASE_POST_DROP_END:
 			phase = "post_drop"
 			phase_mult = 1.3  # leggero respiro dopo l'orgasmo
 		else:
-			# Reset del flag drop quando ci si allontana dalla finestra (per la
-			# prossima traccia o se la pos rimbalza).
-			if dt < -PHASE_BUILDUP_LEAD:
-				_drop_force_fired = false
+			# Reset del guard solo quando siamo "deep pre" (prima del buildup,
+			# es. seek indietro o loop) o "deep normal" (post post-drop, ready
+			# per un eventuale secondo drop event della traccia). NON resettare
+			# nel transitorio [DROP_HIT_WINDOW, POST_DROP_START] = [1.0, 3.0):
+			# se la pos jitter-asse brevemente in dietro nel drop window, un
+			# reset qui causerebbe un re-fire indesiderato.
+			if dt < -PHASE_BUILDUP_LEAD or dt >= PHASE_POST_DROP_END:
+				_drop_fired_for_track = -1
 
 	wave_timer -= delta
 	if wave_timer > 0:

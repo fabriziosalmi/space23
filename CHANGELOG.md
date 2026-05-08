@@ -2,6 +2,17 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.4] - 2026-05-08
+
+Audit pass. Five real issues from a draconian architectural review fixed with rigor, no scope creep.
+
+### Fixed
+- **Pause didn't actually freeze gameplay state.** `if is_paused: return` in `Main._process` was placed *after* the camera-shake block, so `shake_intensity` decayed in real-time during the pause. If you paused on a peak hit and waited a second, the unpause resumed with shake already at zero — the moment was lost. Moved the early-return immediately after the pause-toggle input. Now shake, bomb-input buffer, hit-stop and all systems freeze at their exact press-time state and resume seamlessly.
+- **`weapon_type == 2` (mirror laser) was unreachable.** The branch existed in `Player._process` and the `SHOOT_RATE_MIRROR_LASER` constant was defined, but no powerup ever set `weapon_type = 2` (`PowerupSystem._apply_pickup` only matches 0–3 with case 2 = drones). Removed the dead branch and the orphan constant; the `# 0=normal, 1=railgun` comment was already accurate.
+- **Drone shot was fragile against `spawn_player_bullet` signature drift.** The drone callsite passed `(pos, Vector2.UP, color)` as positional args with a worried "Bug pre-esistente" comment explaining the quirk. Wrapped the callsite in a typed `Main.spawn_drone_bullet(pos, color)` helper that ties the direction to `Vector2.UP` internally — the signature of `spawn_player_bullet` can now evolve without silently breaking the drones. Stale comment removed.
+- **Audio synth fallback hardcoded at 130 BPM.** On WebGL Compatibility the spectrum analyzer is muted (Godot bug #115560) and the visual reactivity is carried by a synthesised beat. The synth ran at a fixed `2.17 beats/sec` (130 BPM), so tracks 4–6 (145 BPM per their drop-time annotations) would visibly desync from the music. Added a `bpm` field per playlist entry (130 for tracks 1–3, 145 for 4–6, `DEFAULT_BPM=130` fallback), new `AudioManager.get_current_bpm()`, and the synth derives `bps = bpm/60` from the current track. Magic numbers `12.566` / `25.133` rewritten as `TAU * 2` / `TAU * 4` (mathematically identical at 130 BPM, scale correctly at any BPM).
+- **`_drop_force_fired` could get stuck.** The bool one-shot guard for the drop force-spawn had three reset paths but missed edge cases: track change while the flag was still true, song loop / replay, web-export `get_playback_position()` jitter inside the drop window. Replaced with `_drop_fired_for_track: int = -1`, keyed on `audio_manager.current_track_idx`. Auto-invalidates on track change. Reset paths kept for buildup phase, deep-pre (`dt < -BUILDUP_LEAD`) and deep-normal (`dt >= POST_DROP_END`); the transient `[1.0, 3.0)` window deliberately does not reset, so a brief backward jitter into the drop window cannot trigger a re-fire.
+
 ## [0.1.3] - 2026-05-08
 
 Polish pass. Big visual upgrade for the nebula and the ship; a few real bugs surfaced in a draconian audit; the camera shake stops feeling like a quake.

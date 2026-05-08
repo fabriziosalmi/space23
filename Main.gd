@@ -492,6 +492,14 @@ func heal(amount: float) -> void:
 func spawn_player_bullet(pos: Vector2, dir: Vector2 = Vector2.UP, color: Color = Color(0.2, 1.5, 3.0), bounces: int = 0) -> void:
 	projectile_system.spawn_player_bullet(pos, dir, color, bounces)
 
+# Wrapper tipato per i drone shot. Esiste per blindare la call-site contro
+# refactor della firma di spawn_player_bullet: i drone sparano sempre dritti
+# verso l'alto, il colore è il solo parametro variabile. Senza wrapper, il
+# Player passava color come argomento posizionale al posto di dir → bug
+# silenzioso se la firma cambia.
+func spawn_drone_bullet(pos: Vector2, color: Color) -> void:
+	projectile_system.spawn_player_bullet(pos, Vector2.UP, color, 0)
+
 func spawn_railgun(pos: Vector2) -> void:
 	railgun_system.spawn(pos)
 
@@ -528,6 +536,14 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("pause"):
 		toggle_pause()
 
+	# Pausa: freeze totale e immediato. Shake, bomb buffer, hit-stop e tutti i
+	# sistemi mantengono lo stato esatto al momento del press → l'unpause
+	# riprende seamless. Senza questo early-return, lo shake decadeva in
+	# real-time durante la pausa e all'unpause il momento era perso (es. pausi
+	# su un peak hit, attendi 1s, sblocchi → camera già a riposo).
+	if is_paused:
+		return
+
 	# Bomb input buffer: registriamo il press indipendentemente dallo stato di
 	# gioco, così non perdiamo l'input durante intro/transition/hit-stop. Il
 	# consumo avviene in _tick_playing al primo frame valido.
@@ -536,8 +552,8 @@ func _process(delta: float) -> void:
 	if bomb_buffer_timer > 0.0:
 		bomb_buffer_timer = max(bomb_buffer_timer - delta, 0.0)
 
-	# Camera shake (anche in pausa per non sembrare congelata male).
-	# trauma² · MAX · smooth_noise: i peak sentono fortissimo, il decay è rapido.
+	# Camera shake. trauma² · MAX · smooth_noise: i peak sentono fortissimo,
+	# il decay è rapido. Skippato in pausa (early-return sopra).
 	if shake_intensity > 0.0:
 		shake_time += delta
 		var trauma: float = shake_intensity / CAMERA_SHAKE_MAX
@@ -552,10 +568,6 @@ func _process(delta: float) -> void:
 		shake_intensity = max(shake_intensity - 1.6 * CAMERA_SHAKE_MAX * delta, 0.0)
 	else:
 		main_camera.offset = Vector2.ZERO
-
-	# Pausa: salta il resto del frame (sistemi non tickano, audio già paused).
-	if is_paused:
-		return
 
 	# Hit-stop globale: tutto il gameplay si ferma (la camera è già stata aggiornata sopra).
 	if hit_stop_timer > 0:
