@@ -90,13 +90,15 @@ void fragment() {
 	color += mid_tint * n3 * (audio_mid * 3.5);
 
 	// --- HIGH — sparkle + bright cloud rim on percussion/hats ---
-	// 5x more sparkle coverage than before (was 0.06 → invisible at typical
-	// audio_high ≈ 0.3 levels). Plus a white rim that lights the brightest
-	// noise peaks: gives a "snare flash" feel on hits.
-	float sparkle_seed = hash21(floor(uv * 400.0) + floor(scroll_time * 3.0));
-	float sparkle = step(1.0 - audio_high * 0.30, sparkle_seed);
-	color += vec3(1.5, 1.4, 1.8) * sparkle;
-	color += vec3(1.0) * smoothstep(0.55, 0.85, n2) * audio_high * 0.8;
+	// Cell grid 80x45 (era 400x225 = 90K celle, troppe → pareva pioggia di
+	// dots colorati per via della chromatic aberration). Adesso ~3.6K celle
+	// con threshold più alto: a peak audio_high produce ~70-100 sparkle
+	// puntiformi distinti. Brightness 1.0 (era 1.5+) per stare sotto il glow
+	// HDR threshold = sparkle crisp, non blob.
+	float sparkle_seed = hash21(floor(uv * 80.0) + floor(scroll_time * 2.0));
+	float sparkle = step(1.0 - audio_high * 0.18, sparkle_seed);
+	color += vec3(1.0, 0.9, 1.2) * sparkle;
+	color += vec3(1.0) * smoothstep(0.6, 0.88, n2) * audio_high * 0.6;
 
 	COLOR = vec4(color, 1.0);
 }

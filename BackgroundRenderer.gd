@@ -215,35 +215,35 @@ func _init_layers():
 			"pulse_speed": randf_range(0.5, 1.0)
 		})
 
-	# 2. LAYER MID (Distant stars) — ridotto da 70 a 30
-	for i in range(30):
+	# 2. LAYER MID — ulteriore taglio: 30 → 18. Velocità WIDER (10..50) per
+	# evitare l'effetto "rain" allineato che si formava con range stretto.
+	for i in range(18):
 		layer_mid.append({
 			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
-			"speed": randf_range(15.0, 30.0),
-			"brightness": randf_range(0.1, 0.35)
+			"speed": randf_range(10.0, 50.0),
+			"brightness": randf_range(0.08, 0.25)
 		})
 
-	# 3. LAYER NEAR (Fast stars + Constellations) — costellazioni 4→2, stars 30→12
-	for i in range(2):
-		var num_stars = randi() % 4 + 3
-		var c_pos = Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y)
-		var speed = randf_range(2.0, 8.0)
-		var stars = []
-		for s in range(num_stars):
-			stars.append(Vector2(randf_range(-200, 200), randf_range(-200, 200)))
-		layer_near.append({
-			"type": "constellation",
-			"pos": c_pos,
-			"speed": speed,
-			"stars": stars,
-			"brightness": randf_range(0.5, 0.85)
-		})
-	for i in range(12):
+	# 3. LAYER NEAR — costellazione singola, 6 fast stars (era 12)
+	var num_stars = randi() % 4 + 3
+	var c_pos = Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y)
+	var speed = randf_range(2.0, 8.0)
+	var stars = []
+	for s in range(num_stars):
+		stars.append(Vector2(randf_range(-200, 200), randf_range(-200, 200)))
+	layer_near.append({
+		"type": "constellation",
+		"pos": c_pos,
+		"speed": speed,
+		"stars": stars,
+		"brightness": randf_range(0.4, 0.7)
+	})
+	for i in range(6):
 		layer_near.append({
 			"type": "star",
 			"pos": Vector2(randf_range(-200, screen_size.x + 200), randf() * screen_size.y),
-			"speed": randf_range(60.0, 100.0),
-			"brightness": randf_range(0.4, 0.85)
+			"speed": randf_range(50.0, 110.0),
+			"brightness": randf_range(0.3, 0.65)
 		})
 		
 	# 4. LAYER TOP (Planets, Asteroids, Comets)
