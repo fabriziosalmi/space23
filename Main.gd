@@ -44,7 +44,7 @@ const BOSS_TYPE_INDEX: int = 5
 # Player HP / Camera
 const PLAYER_HP_MAX: float = 100.0
 const PLAYER_HEAL: float = 40.0
-const CAMERA_SHAKE_MAX: float = 22.0  # 80→45→22: ora il "punch" arriva via radial blur, lo shake fisico è giusto a contorno
+const CAMERA_SHAKE_MAX: float = 10.0  # 80→45→22→10: il radial blur ora porta tutto il "punch", il movimento camera è solo un sussulto leggero
 const INTRO_ZOOM: float = 4.0
 const GAMEOVER_ZOOM: float = 2.5
 
