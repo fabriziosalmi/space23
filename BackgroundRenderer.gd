@@ -20,7 +20,7 @@ const PLANET_PATHS := [
 # Visual body diameter target, in px. Saturn's bbox is wider (rings) so we
 # scale by its body width, not its bbox. Indexes match PLANET_PATHS.
 const PLANET_BODY_WIDTHS := [206.0, 249.0, 253.0, 245.0, 244.0, 350.0, 255.0, 242.0]
-const PLANET_BODY_TARGET_PX: float = 220.0
+const PLANET_BODY_TARGET_PX: float = 150.0
 # Pacing 2× pi� lento: i pianeti sono landmark, devono sentirsi rari. Prima
 # 1800/55 → uno ogni ~12-18s + scroll molto rapido = sembravano "sciamati".
 # Ora ~30-40s tra l'uno e l'altro e drift verticale dimezzato.
@@ -42,9 +42,9 @@ const DEEP_CONFIGS := {
 	"galaxy": {
 		"path": "res://bg/galaxy_andromeda.png",
 		"interval_px": 8000.0,
-		"body_target": 380.0,
+		"body_target": 240.0,
 		"scroll_base": 18.0,
-		"modulate": Color(0.85, 0.85, 0.95, 0.65),
+		"modulate": Color(0.7, 0.7, 0.85, 0.42),
 		"z": -9,
 		"tint_strength": 0.30,
 		"rim_strength": 0.70
@@ -52,9 +52,9 @@ const DEEP_CONFIGS := {
 	"nebula": {
 		"path": "res://bg/nebula_ring.png",
 		"interval_px": 9500.0,
-		"body_target": 360.0,
+		"body_target": 220.0,
 		"scroll_base": 20.0,
-		"modulate": Color(1.0, 1.0, 1.0, 0.60),
+		"modulate": Color(0.85, 0.85, 0.85, 0.40),
 		"z": -9,
 		"tint_strength": 0.25,
 		"rim_strength": 0.45
@@ -62,9 +62,9 @@ const DEEP_CONFIGS := {
 	"blackhole": {
 		"path": "res://bg/blackhole_kerr.png",
 		"interval_px": 12000.0,
-		"body_target": 320.0,
+		"body_target": 200.0,
 		"scroll_base": 18.0,
-		"modulate": Color(1.0, 1.0, 1.0, 0.85),
+		"modulate": Color(0.9, 0.9, 0.9, 0.55),
 		"z": -7,  # in front of planets — striking landmark
 		"tint_strength": 0.10,
 		"rim_strength": 0.30
@@ -72,9 +72,9 @@ const DEEP_CONFIGS := {
 	"cluster": {
 		"path": "res://bg/cluster_m13.png",
 		"interval_px": 6500.0,
-		"body_target": 220.0,
+		"body_target": 140.0,
 		"scroll_base": 24.0,
-		"modulate": Color(1.0, 1.0, 0.92, 0.65),
+		"modulate": Color(0.85, 0.85, 0.78, 0.42),
 		"z": -8,
 		"tint_strength": 0.20,
 		"rim_strength": 0.30
@@ -360,13 +360,31 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 	set_meta("audio_mid", audio_mid)
 	queue_redraw()
 
+func _has_visible_landmark() -> bool:
+	# "Visible" = già in viewport o entro 150px sopra di esso (sta per entrare).
+	# Usato per il guard "mai due landmark insieme": se uno è on-screen,
+	# qualunque altro spawn (planet o deep) viene posticipato.
+	for c in planet_layer.get_children():
+		if c is Sprite2D and c.position.y > -150 and c.position.y < screen_size.y + 100:
+			return true
+	for c in deep_layer.get_children():
+		if c is Sprite2D and c.position.y > -150 and c.position.y < screen_size.y + 100:
+			return true
+	return false
+
 func _tick_planets(delta: float, effective_speed: float, player_vel_x: float = 0.0) -> void:
 	# Accumulate "distance traveled" for planet spawn pacing.
 	planet_distance_accum += effective_speed * REFERENCE_SCROLL_SPEED * delta
 
 	if planet_distance_accum >= PLANET_INTERVAL_PX:
-		planet_distance_accum -= PLANET_INTERVAL_PX
-		_spawn_planet()
+		# Cap accumulator a interval per evitare burst di spawn quando lo
+		# schermo si libera. Così appena la landmark precedente esce dal
+		# viewport, la prossima parte SUBITO ma una sola.
+		if _has_visible_landmark():
+			planet_distance_accum = PLANET_INTERVAL_PX
+		else:
+			planet_distance_accum -= PLANET_INTERVAL_PX
+			_spawn_planet()
 
 	# Lateral parallax shift dei pianeti (layer "lontano" → factor piccolo).
 	# 0.00015 al MAX_SPEED 700 = ~6 px/sec, percepibile ma non distrae.
@@ -391,13 +409,18 @@ func _tick_planets(delta: float, effective_speed: float, player_vel_x: float = 0
 			sp.queue_free()
 
 func _tick_deep_landmarks(delta: float, effective_speed: float, player_vel_x: float = 0.0) -> void:
-	# Per-kind distance accumulators → independent pacing.
+	# Per-kind distance accumulators → independent pacing. Anche qui guard di
+	# esclusività: se c'è già una landmark in viewport (planet o deep), questo
+	# spawn viene posticipato. Cap dell'accumulator a interval per evitare burst.
 	for kind in DEEP_CONFIGS:
 		deep_distance_accum[kind] += effective_speed * REFERENCE_SCROLL_SPEED * delta
 		var interval: float = float(DEEP_CONFIGS[kind]["interval_px"])
 		if deep_distance_accum[kind] >= interval:
-			deep_distance_accum[kind] -= interval
-			_spawn_deep_landmark(kind)
+			if _has_visible_landmark():
+				deep_distance_accum[kind] = interval
+			else:
+				deep_distance_accum[kind] -= interval
+				_spawn_deep_landmark(kind)
 
 	# Lateral parallax dei deep landmarks (layer più lontano dei pianeti).
 	var lat_shift: float = -player_vel_x * 0.00008 * delta * 60.0
@@ -508,8 +531,10 @@ func _spawn_planet() -> void:
 	var x_drift: float = randf_range(-12.0, 12.0)
 
 	sp.position = Vector2(rx, ry)
-	# Slight desaturation + alpha so they read as distant.
-	sp.modulate = Color(0.88, 0.86, 0.95, 0.9)
+	# Desaturazione + alpha basso per leggerli come "fondale": il pianeta
+	# scenografia, non un focal point. 0.55 alpha = ben visibile ma non
+	# competitivo coi nemici/proiettili in foreground.
+	sp.modulate = Color(0.78, 0.76, 0.85, 0.55)
 
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://shaders/planet.gdshader")

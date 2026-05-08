@@ -41,8 +41,10 @@ void fragment() {
 		vec2 dir = uv - vec2(0.5);
 		float dist = length(dir);
 
-		// 1. Aberrazione Cromatica Progressiva (Flow + Bass)
-		float shift = dist * (0.006 + flow_state * 0.015 + audio_bass * 0.015);
+		// 1. Aberrazione Cromatica Progressiva (Flow + Bass) — dimezzata.
+		// Era 0.006 + 0.015 + 0.015 = max 0.036 = 46px shift sui peak: faceva
+		// apparire ogni stella come triplet R/G/B chunky. Adesso max 0.018.
+		float shift = dist * (0.003 + flow_state * 0.008 + audio_bass * 0.007);
 		float r = texture(screen_tex, uv + dir * shift).r;
 		float g = texture(screen_tex, uv).g;
 		float b = texture(screen_tex, uv - dir * shift).b;
