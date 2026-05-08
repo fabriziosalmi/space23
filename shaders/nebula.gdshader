@@ -92,14 +92,21 @@ vec3 starfield_layer(vec2 uv, float density, float appear_thr, float core_radius
 
 void fragment() {
 	vec2 uv = UV;
-	uv.y += scroll_time * 0.05;
+	// Direzione: `-= scroll_time` shifta il sample DOWN ⇒ pattern visibile
+	// si muove DOWN (illusione "ship moves forward"). Stessa correzione
+	// applicata anche a starfield/streak. Le explicit y-offsets nelle
+	// fbm() sotto sono state flippate per mantenere la differential drift
+	// inter-octave senza riportare le nuvole nella vecchia direzione UP.
+	uv.y -= scroll_time * 0.05;
 
-	// Two main cloud octaves (bass-driven)
-	float n1 = fbm(uv * 3.0 + vec2(scroll_time * 0.02, scroll_time * 0.05));
-	float n2 = fbm(uv * 6.0 - vec2(scroll_time * 0.01, scroll_time * 0.03));
+	// Two main cloud octaves (bass-driven). Y-component delle additional
+	// time-offsets invertita rispetto alla vecchia versione: n1 add `-0.05`,
+	// n2 add `+0.03`, n3 add `+0.04` (era +0.05/-0.03/-0.04).
+	float n1 = fbm(uv * 3.0 + vec2(scroll_time * 0.02, -scroll_time * 0.05));
+	float n2 = fbm(uv * 6.0 + vec2(-scroll_time * 0.01, scroll_time * 0.03));
 
 	// Faster/finer sub-cloud (mid-driven, gives texture even in bass-less sections)
-	float n3 = fbm(uv * 12.0 + vec2(scroll_time * 0.08, -scroll_time * 0.04));
+	float n3 = fbm(uv * 12.0 + vec2(scroll_time * 0.08, scroll_time * 0.04));
 
 	vec3 color = c_bg;
 	color = mix(color, c_neb1, smoothstep(0.1, 0.8, n1));

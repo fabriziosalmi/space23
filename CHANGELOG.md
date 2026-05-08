@@ -2,6 +2,16 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.7] - 2026-05-08
+
+Closes the background-direction work and lays out the v2 plan.
+
+### Fixed
+- **Cloud passes were scrolling up too.** v0.1.6 fixed the starfield and speed-streak passes but left the FBM cloud octaves (n1/n2/n3) on the old direction — they were less visually obvious because clouds are amorphous, but technically still inconsistent with the planets/comets/landmarks moving down. Inverted the base UV scroll (`uv.y -= scroll_time * 0.05`) and flipped the explicit y-component of each octave's time-offset to preserve the differential drift between layers.
+
+### Added
+- **`bg_v2.md` — proposal for a chunked, curated, looping universe strip.** Documents the current architecture, three options (extend ad-hoc, hand-authored chunks, generated chunks), the recommended phased path (start with `BackgroundDirector` + `ChunkProvider` interface; ship a single `legacy_random_drift` chunk first to prove the pipeline; layer in hand-composed themed chunks; defer the generator), and asset specs for any new background imagery (PNG sizes, sources, folder layout). Tracked in git so future BG work has a shared reference.
+
 ## [0.1.6] - 2026-05-08
 
 The "ship moves forward" pass: stutter loop, reversed starfields, missing player SFX, mobile portrait — all closed in one batch.
