@@ -2,6 +2,14 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.15] - 2026-05-08
+
+### Added
+- **Joypad / gamepad USB support (Livello A — digital).** Xbox/PS-layout bindings added to `InputMap` alongside the existing keyboard ones. Mapping: D-pad + left stick → `move_*`, A / RB → `fire`, B / LB → `dash`, X / Y → `bomb`, Start → `pause`, any button → title-screen "tap to start", `ui_accept` (A) → game-over retry (Godot built-in, already worked). Player.gd / UIManager.gd code unchanged — the actions feed both keyboard and joypad transparently. Livello A: stick deadzone 0.5 (Godot default) → digital-only (sotto 50% inclinazione = niente, sopra = full speed). Livello B (analogico graduato via `get_action_strength` + `limit_length(1.0)`) deferred — better feel ma più lavoro.
+
+### Changed
+- **SuperHot dilation magnitude reduced [0.5, 1.0] → [0.9, 1.0].** User-reported P0: even with the v0.1.6 fix (floor 0.5, lerp 4/s), the gsm still oscillated continuously between ~0.6 and ~0.95 at the rhythm of the player's velocity changes — every gsm-scaled system (enemy bullets, enemies, BG scroll, comets, distance counter) pulsed in lockstep, which the brain reads as "the world is changing speed with me" = artificial, regardless of how smooth the lerp is. Tightening the clamp to `[0.9, 1.0]` drops the oscillation amplitude from 50% to 10% — below the threshold of "the world is visibly cycling speed". SuperHot survives as a subtle *feeling* (the world has slight weight when the player stops) without the synchronised oscillation. The dash still forces `speed_ratio = 1.0`, flow and drop boost unaffected. If further reduction is needed (i.e. user still perceives sync), the escalation is to decouple `BackgroundRenderer`'s scroll from gsm — bigger fix, deferred until needed.
+
 ## [0.1.14] - 2026-05-08
 
 A pure-aesthetic polish pass — 9 subliminal touches integrated into existing systems. Each individually adds 2-5% to the perceived "polish"; the cumulative effect shifts the game from "competent prototype" to "someone cared about the corners". No new infrastructure, no AI-slop visual spam.
