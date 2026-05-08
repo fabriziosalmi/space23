@@ -58,18 +58,18 @@ var is_transitioning = false
 var transition_timer = 0.0
 
 func _ready():
-	audio_bus_idx = AudioServer.bus_count
-	AudioServer.add_bus(audio_bus_idx)
-	AudioServer.set_bus_name(audio_bus_idx, "MusicBus")
-	AudioServer.set_bus_send(audio_bus_idx, "Master")
-	
-	var spectrum = AudioEffectSpectrumAnalyzer.new()
-	spectrum.buffer_length = 0.1
-	AudioServer.add_bus_effect(audio_bus_idx, spectrum)
+	# Bus layout caricato da default_bus_layout.tres (Master con SpectrumAnalyzer
+	# all'effect index 0). Critico per il web export: Godot 4 ha un bug per cui
+	# i bus aggiunti runtime via AudioServer.add_bus() / set_bus_send() NON
+	# vengono routati nel build web → audio totalmente silente, anche se
+	# l'AudioContext è running. Definendoli nella resource il problema sparisce.
+	#   ref: https://github.com/godotengine/godot/issues/115560
+	#   thread godot forum: "no audio in web export" (mar 2025)
+	audio_bus_idx = 0  # Master
 	spectrum_analyzer = AudioServer.get_bus_effect_instance(audio_bus_idx, 0)
-	
+
 	audio_stream_player = AudioStreamPlayer.new()
-	audio_stream_player.bus = "MusicBus"
+	audio_stream_player.bus = "Master"
 	audio_stream_player.finished.connect(_on_song_finished)
 	add_child(audio_stream_player)
 	
@@ -92,9 +92,13 @@ func _process(delta):
 		var mag_low = spectrum_analyzer.get_magnitude_for_frequency_range(20, 250).length()
 		var mag_mid = spectrum_analyzer.get_magnitude_for_frequency_range(250, 2000).length()
 		var mag_high = spectrum_analyzer.get_magnitude_for_frequency_range(2000, 10000).length()
-		audio_low = lerp(audio_low, clamp(mag_low * 2.0, 0.0, 1.0), 10.0 * delta)
-		audio_mid = lerp(audio_mid, clamp(mag_mid * 2.0, 0.0, 1.0), 10.0 * delta)
-		audio_high = lerp(audio_high, clamp(mag_high * 2.0, 0.0, 1.0), 10.0 * delta)
+		# Gain × 4: i magnitudes raw del SpectrumAnalyzer in Godot sono in 0.05-0.3
+		# per musica normale; con × 2 audio_* saturava raramente a 1.0 (= dynamic
+		# range strangolato). × 4 con clamp permette ai beat forti di toccare il
+		# tetto, mentre i lerp con 10*delta smussano l'attacco.
+		audio_low = lerp(audio_low, clamp(mag_low * 4.0, 0.0, 1.0), 10.0 * delta)
+		audio_mid = lerp(audio_mid, clamp(mag_mid * 4.0, 0.0, 1.0), 10.0 * delta)
+		audio_high = lerp(audio_high, clamp(mag_high * 4.0, 0.0, 1.0), 10.0 * delta)
 
 func load_and_play_track(idx: int):
 	current_track_idx = idx

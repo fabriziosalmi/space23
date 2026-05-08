@@ -24,6 +24,14 @@ window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
 
+[audio]
+
+# Bus layout definito come risorsa (default_bus_layout.tres) invece che creato
+# runtime via AudioServer.add_bus(). Workaround per il bug noto di Godot 4 web
+# export, dove i bus aggiunti via codice non vengono routati e l'audio resta
+# silente: https://github.com/godotengine/godot/issues/115560
+buses/default_bus_layout="res://default_bus_layout.tres"
+
 [rendering]
 
 environment/defaults/default_clear_color=Color(0, 0, 0, 1)

@@ -65,27 +65,32 @@ void fragment() {
 	color = mix(color, c_neb1, smoothstep(0.1, 0.8, n1));
 	color = mix(color, c_neb2, smoothstep(0.2, 0.9, n2));
 
-	// --- BASS PULSE (the violet clouds the player remembers) ---
-	// Soft baseline (so the nebula never goes black) + dramatic kick on each beat.
-	// audio_low ranges [0..1]; on a strong cassa it lights everything up.
+	// --- BASS — pump c_neb1 (violet) on the kick, light touch on c_neb2 ---
+	// Bands deliberately split visually: bass dominates c_neb1, mid dominates
+	// c_neb2 (below). This way a kick-heavy section reads as "violet pulse"
+	// while a synth/pad section reads as "blue surge" — each band has its own
+	// visible signature instead of all of them just brightening everything.
 	float bass_baseline = 0.6;
-	float bass_kick = audio_low * audio_low * 14.0;  // squared for snappier transient
-	float bass_glow = bass_baseline + bass_kick;
-	color += c_neb1 * n1 * bass_glow;
-	color += c_neb2 * n2 * bass_glow * 0.5;
+	float bass_kick = audio_low * audio_low * 16.0;
+	color += c_neb1 * n1 * (bass_baseline + bass_kick);
+	color += c_neb2 * n2 * (bass_baseline * 0.5 + bass_kick * 0.15);
 
-	// --- MID TEXTURE ---
-	// Adds the fine sub-cloud only when mids are present. Tinted halfway between
-	// the two main colors so it integrates rather than competing.
-	vec3 mid_tint = mix(c_neb1, c_neb2, 0.5);
-	color += mid_tint * n3 * audio_mid * 2.0;
+	// --- MID — pump c_neb2 + the fine n3 sub-cloud ---
+	// Linear gain on the main n2 cloud (more reactive than just the n3 micro-
+	// texture) plus the n3 detail tinted toward c_neb2.
+	float mid_glow = audio_mid * 2.5;
+	color += c_neb2 * n2 * mid_glow;
+	vec3 mid_tint = mix(c_neb1, c_neb2, 0.7);
+	color += mid_tint * n3 * (audio_mid * 3.5);
 
-	// --- HIGH SPARKLE ---
-	// Star-like single-pixel sparkle that animates on hats. Tied to scroll_time
-	// so the sparkle pattern slowly drifts with the rest of the universe.
+	// --- HIGH — sparkle + bright cloud rim on percussion/hats ---
+	// 5x more sparkle coverage than before (was 0.06 → invisible at typical
+	// audio_high ≈ 0.3 levels). Plus a white rim that lights the brightest
+	// noise peaks: gives a "snare flash" feel on hits.
 	float sparkle_seed = hash21(floor(uv * 400.0) + floor(scroll_time * 3.0));
-	float sparkle = step(1.0 - audio_high * 0.06, sparkle_seed);
+	float sparkle = step(1.0 - audio_high * 0.30, sparkle_seed);
 	color += vec3(1.5, 1.4, 1.8) * sparkle;
+	color += vec3(1.0) * smoothstep(0.55, 0.85, n2) * audio_high * 0.8;
 
 	COLOR = vec4(color, 1.0);
 }

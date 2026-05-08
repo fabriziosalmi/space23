@@ -248,12 +248,13 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 	# Cassa = boost momentaneo dello scroll. Pulsa con la traccia.
 	var effective_speed: float = global_speed_multiplier + audio_low * KICK_PARALLAX_BOOST
 
-	# Floor lento per la nebula: tra una cassa e l'altra audio_low può crollare
-	# a ~0; con i colori palette scuri il shader (bass_baseline=0.6) finisce in
-	# nero e il giocatore vede solo le stelline. Iniettiamo un respiro ambient
-	# (≈0.20–0.40) che tiene visibili le nuvole anche nei silenzi, senza toccare
-	# l'audio_low usato dal parallasse o dal post-FX (gameplay-critical).
-	var ambient_pulse: float = 0.30 + 0.10 * sin(Time.get_ticks_msec() / 1000.0 * 0.7)
+	# Floor MINIMO per la nebula: il shader ha già il suo bass_baseline=0.6
+	# interno, quindi anche con audio_low=0 le nuvole sono comunque visibili.
+	# Qui aggiungiamo solo un respiro ambient leggero (0.05–0.15) per evitare
+	# che le sezioni silenti sentano "morte". Era 0.20–0.40 e schiacciava
+	# completamente la dinamica reale dell'audio (max(real, floor) → quasi
+	# sempre floor). Adesso l'audio reale domina su ogni beat.
+	var ambient_pulse: float = 0.10 + 0.05 * sin(Time.get_ticks_msec() / 1000.0 * 0.7)
 	var shader_audio_low: float = max(audio_low, ambient_pulse)
 
 	nebula_time += delta * effective_speed
