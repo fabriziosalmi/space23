@@ -2,6 +2,21 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.22] - 2026-05-09
+
+A "round 4" audit covering robustness, persistence, lifecycle, and edge cases not touched by the previous rounds (gameplay backbone, frontend).
+
+### Fixed
+- **Window focus loss did not pause the game.** Alt-Tab during gameplay let the game keep running in the background — music, bullets, boss combat, distance accumulating. Player returned to a corpse and a lost score. Fix: connect `get_window().focus_exited` to a `_on_focus_lost` handler that calls `toggle_pause()` if currently in a real PLAYING state.
+- **Main camera and gameplay systems didn't follow viewport resize.** UIManager and PostFXController had been wired up to `size_changed` in v0.1.21, but Main itself still cached `screen_size` and `main_camera.position = screen_size / 2.0` from `_ready` only — and the systems (EnemySystem, ProjectileSystem, PowerupSystem) used their own `screen_size` reference set at wiring time, used for cull boundaries and AI movement bounds. On window resize the camera stayed centered on the old viewport and bullets/enemies were culled at the old y coordinates. Fix: connect `get_window().size_changed` in `Main._ready`, propagate the new size to the systems and re-center the camera.
+- **BackgroundRenderer didn't follow viewport resize either.** `strip_width` (for the parallax strip), `strip_pad`, `max_player_offset`, and `nebula_bg.size` were all computed once from the initial `screen_size`. After resize, lateral parallax used the wrong strip proportions and the nebula `ColorRect` (overscan = `screen + 400`) left visible black borders on a wider window. Fix: same pattern, `get_window().size_changed` recomputes strip dimensions and resizes `nebula_bg`.
+- **`load_highscores` could crash on a corrupt save file.** `FileAccess.open(SAVE_PATH, READ)` can return `null` even when `file_exists()` is true (permissions, locked file, web private mode blocking IndexedDB). The code went straight into `file.get_as_text()` — null deref. Plus: a malformed JSON entry (e.g. `{"name": null}` from a future schema change or a manual edit) would crash `_update_leaderboard_display` later (`entry.name.substr(0,8)` on null). Fix: null-check on `FileAccess.open`; per-entry `_is_valid_highscore_entry` validation before appending to `highscores`. Bad entries are silently dropped (the leaderboard degrades gracefully instead of breaking).
+- **`save_highscore` could crash on write failure.** Symmetric to the load path: `FileAccess.open(WRITE)` can return null (disk full, permissions, web private mode). Fix: null-check; if write fails, the in-memory `highscores` is still updated and the leaderboard display refreshes — the player just doesn't persist to disk.
+- **Player name was not sanitized.** `_on_name_submitted` did `strip_edges().to_upper()` only. A name with embedded tab, newline, control char, or emoji broke the leaderboard's fix-width layout (`"FOO\tBAR"` shifted the score column for all subsequent entries). Fix: explicit char filter — only `[A-Z0-9 ]`, capped at 8 chars. `_sanitize_name` replaces the inline scrubbing.
+
+### Removed
+- **Dead `is_playing` flag.** Set to `true` in `_on_start_pressed`, never reset, only ever read at one early-return that was already redundant with the `if game_state == "TITLE"` gate above it. Pre-start, the TITLE gate already returned. Post-start, `is_playing` was permanently true. Removed both the variable and its sole reader.
+
 ## [0.1.21] - 2026-05-09
 
 A frontend-only audit (round 3): UI/UX, graphics, audio, post-FX. Backend gameplay logic out of scope.
