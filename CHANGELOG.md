@@ -2,6 +2,24 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.21] - 2026-05-09
+
+A frontend-only audit (round 3): UI/UX, graphics, audio, post-FX. Backend gameplay logic out of scope.
+
+### Fixed
+- **UI broken on window resize / device rotation.** All position/size assignments in `UIManager._ready` and `PostFXController.setup` cached `screen_size` once. On resize: `pause_dim` no longer covered the viewport (gameplay visible at corners), `bomb_button` floated mid-screen or off-canvas, `pause_label` / `title_label` / `leaderboard_label` / `version_label` / `boss_hp_bar` / `game_over_container` all stuck at old coords, and the post-FX `ColorRect.size` didn't follow either. Fix: extracted screen-dependent positions into `_layout_for_size(s: Vector2)`, connected `get_tree().root.size_changed` in both UIManager and PostFXController. Top-left HUD labels (`dist`/`score`/`hp`/`bomb`) anchored at `(20, …)` are already resize-safe; `flow_label` already recomputed each frame in `update_hud`.
+- **Post-FX aspect ratio hardcoded 1.7778 (16:9).** `post.gdshader` did `bh_dir.x *= 1.77` and `from_ship_aspect.x *= 1.77` to keep the BH lens and radial-blur masks circular. On non-16:9 viewports (mobile portrait ~0.56, square ~1.0, ultrawide ~2.4) the mask deformed into stretched ellipses. Fix: added `uniform float aspect`, set from `PostFXController._apply_aspect(s)` at setup and on `size_changed`. Default `1.7778` preserves desktop behaviour.
+- **Boss HP bar could show negative value for one frame.** Continuous damage sources (railgun DPS, smart bomb `-50` per loop iteration) push `e.hp` below 0 between damage and the next-frame `handle_enemy_kill` cleanup. `update_boss_hp` set `boss_hp_bar.value = hp` directly — Godot's ProgressBar doesn't auto-clamp `value > 0`. Fix: `boss_hp_bar.value = max(hp, 0.0)`.
+- **Leaderboard never visible after first game over.** `leaderboard_label` was hidden in `_input` when leaving TITLE and only un-hidden on first show. After the first game over the player never saw the freshly-saved entry — the social loop ("did I make top 5?") was hidden. Fix: `leaderboard_label.show()` in `show_game_over`, `hide()` in `hide_game_over`. Position remains center+80 (just below the GAME OVER container).
+- **Instant-retry shortcut silently dropped the run's score.** Pressing `ui_accept` (Enter / joypad A) at game over with the name input still focused calls `_on_retry_pressed` directly — but `name_input` had not yet emitted its `text_submitted` signal, so `save_highscore` never ran. The player thought they'd hit "quick restart" and lost a high score. Fix: new `auto_save_pending_score()` in UIManager, called by Main's retry path before `hide_game_over`. Saves with the typed name (or `"ANON"` if blank) when name_input is still visible.
+- **Boss HP / HP bars used Godot's default gray theme.** The flat-gray ProgressBar fill clashed with the neon aesthetic of the rest of the HUD. Fix: `_apply_neon_progressbar_theme(bar, fill, edge)` helper applies a `StyleBoxFlat` background (dark navy, semi-transparent, bordered) and fill (HDR neon, bordered). Player HP green-cyan, boss HP red-pink.
+- **`KILLS` label mislabeled the score.** `score_points` accumulates kills (`+250`/`+5000`), grazes (`+50`, fixed in v0.1.20), and the top-half time bonus (~14 pt/sec, fixed in v0.1.20). Calling it "KILLS" was misleading both before and after the v0.1.20 graze/score fixes. Fix: rename HUD label to `SCORE`, game-over breakdown line to `DIST … + SCORE …`.
+- **HUD pulse comment was wrong.** Old comment claimed "ramp-up rapido (lineare) per i primi 30% del timer, poi decay. Picco ~1.6× verso quando il timer è quasi completo (nuovo frame)". Code is just `b = 1.0 + 0.6 * k` where `k` decays from 1 to 0 — pure linear decay, no ramp-up, peak at frame of set. Fix: rewrote comment to match.
+
+### Added
+- **Title-screen control hints.** `controls_label` below the leaderboard on TITLE: `WASD / STICK MOVE • SPACE / A FIRE • SHIFT / B DASH • X / Y BOMB • ESC / START PAUSE`. Hidden when game starts (alongside title/leaderboard/version). Pre-fix new players had to guess the bindings or read the README.
+- **Pause overlay mentions joypad.** Old text was `TAP / ESC TO RESUME` — joypad players didn't know `START` toggled pause. New: `TAP / ESC / START`.
+
 ## [0.1.20] - 2026-05-09
 
 A "round 2" draconian audit of the gameplay backbone — game rules, scoring, hitboxes, state-machine consistency. Eight backend logic bugs found and fixed; UI/audio/graphics out of scope.
