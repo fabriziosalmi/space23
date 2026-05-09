@@ -2,6 +2,18 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.24] - 2026-05-09
+
+A round-6 defensive correctness pass — small, real, no over-engineering.
+
+### Fixed
+- **Pause did not work during INTRO.** `toggle_pause` early-returned on `game_state != "PLAYING"` — but INTRO is a 2-second pre-gameplay state where the player can be disoriented if interrupted. Alt-Tab during INTRO let the game run in the background: `intro_timer` ticked down, gameplay started while the window was unfocused, the player came back to a moving ship taking damage. Fix: relax the gate to `PLAYING or INTRO`. The freeze guard (`if is_paused: return` in `_process`) already handles INTRO transparently — `intro_timer` is part of `_tick_intro` which doesn't run during pause, so the countdown is correctly suspended. `_on_focus_lost` extended to match.
+- **Intro→PLAYING transition left `target_speed_multiplier = 0.1` for one frame.** `_tick_intro` set `target_speed_multiplier = INTRO_SPEED_MULT (0.1)` every frame. On the frame `intro_timer` reached 0, the function flipped `is_intro = false` and `game_state = "PLAYING"`, but the post-dispatch `gsm = lerp(gsm, target, 4*delta)` still saw `target = 0.1` (set at the start of the same frame's `_tick_intro`). Next frame `_tick_playing` overwrote to 1.0, so the visible effect was tiny — but it was a 1-frame "the world wants to go to 0.1×" lag that didn't need to exist. Fix: explicit `target_speed_multiplier = 1.0` in `_tick_intro`'s end-of-intro block.
+- **`shake_time` accumulator could drift float32 precision after long runs.** `shake_time += delta` accumulates without bound. After ~4 hours of uptime, `shake_time` reaches ~14400, and float32 starts losing 1ms of precision per increment — the noise feeding `sin(shake_time * 47)` etc. degrades to step-quantised. Fix: `shake_time = fmod(shake_time + delta, 1000.0)`. The wrap point is far above the lowest noise frequency's period (`2π/19.1 ≈ 0.33s`), so phase-continuity is preserved. Practical impact is for marathon runs only, but defensive cleanup costs nothing.
+
+### Removed
+- **Tautological check in `damage_player`.** The function early-returns on `game_state == "GAMEOVER"` at the top, then later did `if player_hp <= 0 and game_state != "GAMEOVER": trigger_game_over()`. The `and game_state != "GAMEOVER"` was always true at that point. Cleanup.
+
 ## [0.1.23] - 2026-05-09
 
 A round-5 cleanup pass: dead code, redundant per-frame work, sloppy patterns. No behavioral changes — purely health.
