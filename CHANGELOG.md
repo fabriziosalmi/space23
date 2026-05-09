@@ -2,6 +2,15 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.19] - 2026-05-09
+
+### Fixed
+- **Mouse target left ship banked at max roll when cursor held off-screen.** `Player._process` mouse-control branch computed `target_pos = get_global_mouse_position() - main.main_camera.offset` and added a normalized direction to `input_dir` whenever `distance² > 225` (15 px dead-zone). With the cursor held outside the playable area (web fullscreen, mouse drag past the edge), the ship clamped at the screen border (`position.x = screen_size.x - 80`) but the dead-zone stayed violated (`distance²` against the off-screen target was huge) → input kept pushing into the wall and the silhouette stuck at full roll bank. Fix: clamp `target_pos` to the same `[80, screen-80]` bounds applied to `position` — the dead-zone now disengages as soon as the ship reaches the border, roll returns to 0, no phantom input.
+- **`damage_flash_timer` and `heartbeat_timer` not explicitly reset on retry.** In practice both are auto-zeroed before the player notices: `damage_flash_timer` decays in 200 ms while the death scene takes ≥3 s (the GAMEOVER tick keeps the decay running, fixed in v0.1.18), and `heartbeat_timer` is reset to 0 by the gating else-branch on the first PLAYING frame after retry (`player_hp = 100 ≥ 25`). But neither was listed in `_on_retry_pressed`'s explicit reset block alongside `shake_intensity` / `hit_stop_timer` / `boss_lens_timer` / `bomb_buffer_timer` — added now as a backstop, so a future change that keeps `damage_flash` live in GAMEOVER, or alters `player_hp` init at respawn, can't silently break the invariant.
+
+### Polish
+- **`_show_play_ui` / `_hide_play_ui` symmetry.** The show-side gated `bomb_button.show()` on `OS.has_feature("mobile") or OS.has_feature("web")`, but the hide-side hid the button unconditionally. Functionally fine (on desktop the button is hidden from init, the unconditional hide is a no-op), but reading the pair gave the wrong impression that the button could appear on desktop in some path. Hide-side now matches the show-side gate.
+
 ## [0.1.18] - 2026-05-09
 
 ### Fixed
