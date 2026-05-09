@@ -2,6 +2,52 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.2.0] - 2026-05-09
+
+Minor bump rolling up the **v0.1.18 → v0.1.24 audit campaign** — six rigorous rounds, ~30 fixes across the codebase. Critical mechanics that were silently broken since their introduction now actually work; UX gaps closed; robustness hardened; dead code cleaned. No new features and no intentional behaviour changes outside the bugs being closed.
+
+### Critical mechanics restored
+- **Graze never paid out** — `Dictionary.has(key)` returns true on key existence, not value, so the gating condition was always false. The risk/reward "skim past bullets" loop was dead since written. (v0.1.20)
+- **Top-half time bonus always 0** — `int(15 * delta * factor)` truncated to 0 every frame at 60 fps. Replaced with float accumulator. (v0.1.20)
+- **Boss-class enemies were ~85% phantom** — bullet vs enemy collision used `distance² < 35²` against `e.pos` as a point. Mothership (300×180 silhouette) only hittable inside a 35-radius circle around its centre; player could park *inside* the boss without taking body damage. Replaced with per-type AABB stored on each spawn, point-in-box collision. (v0.1.20)
+- **Smart bomb bypassed `handle_enemy_kill`** — boss killed by bomb got `+100` instead of `+5000`, no lensing, no big hit-stop, boss HP bar stayed visible. (v0.1.18)
+- **Player kept moving and firing during pause and hit-stop** — bullets accumulated while world was frozen, then launched in a burst on unpause / hit-stop end. (v0.1.18, v0.1.20)
+- **Powerup timers cannibalised each other** — single `fire_buff_timer` shared between railgun and drones; pickup of one shortened the other. (v0.1.20)
+- **`_tick_*` systems kept running during GAMEOVER** — enemies inseguivano un cadavere invisibile, body collisions fired SFX/shake/damage on the corpse, in-flight heal could resurrect HP while still in GAMEOVER. (v0.1.20)
+- **Player powerup / cooldown timers decayed with `gsm`** — drop boost (gsm=4×) made `10s` railgun last 2.5s wallclock; intro / transition stretched timers. (v0.1.20)
+- **Two boss spawns possible across track transition** — boss surviving track end stacked with the next track's boss spawn 30s later. (v0.1.20)
+- **`target_speed_multiplier` could reach 7.2×** — drop × max flow gave un-dodgeable boss combat. Switched flow bonus to additive: max 4.8×. (v0.1.20)
+
+### UX / frontend hardening
+- **Window resize broke everything** — UI elements stuck at old coords, BG strip / parallax wrong, post-FX rect wrong size, gameplay systems culling at old screen bounds. Full size_changed handlers in UIManager, PostFXController, BackgroundRenderer, Main. (v0.1.21, v0.1.22)
+- **Aspect ratio hardcoded `1.77` in post.gdshader** — BH lens and radial-blur masks deformed into ellipses on portrait / square viewports. `uniform float aspect`, set on setup + resize. (v0.1.21)
+- **Leaderboard never visible after first game over** — hidden in `_input` on title-leave, only ever un-hidden once. Now shown in `show_game_over`. (v0.1.21)
+- **Instant-retry shortcut silently dropped the run's score** — `ui_accept` at game over called `_on_retry_pressed` directly, name input never submitted, save never ran. `auto_save_pending_score` saves with typed text or `"ANON"` before retry. (v0.1.21)
+- **No focus-loss pause** — Alt-Tab during gameplay let the world keep running in background, returning to a corpse. Now connected to `Window.focus_exited`, also covers INTRO. (v0.1.22, v0.1.24)
+- **Default Godot grey ProgressBar theme on HP / boss HP** clashed with neon HUD. `_apply_neon_progressbar_theme` styles them. (v0.1.21)
+- **`KILLS` label was actually composite score** (kills + grazes + top-half bonus). Renamed `SCORE`. (v0.1.21)
+- **No control hints on title screen** — new players were guessing bindings. `controls_label` lists WASD/STICK • SPACE/A • SHIFT/B • X/Y • ESC/START. (v0.1.21)
+- **Mouse off-screen left ship at max roll forever** — clamp `target_pos` to playable bounds. (v0.1.19)
+- **Pause label said `TAP / ESC` only** — joypad players didn't know `START` toggled pause. Updated. (v0.1.21)
+
+### Robustness / persistence
+- **`load_highscores` could crash on null `FileAccess.open` or malformed entry** — defensive null guard, per-entry `_is_valid_highscore_entry` validation. (v0.1.22)
+- **`save_highscore` could crash on write failure** — null guard. (v0.1.22)
+- **Player name not sanitized** — embedded tab/newline/emoji broke fix-width leaderboard layout. `_sanitize_name` filters `[A-Z0-9 ]`, cap 8 chars. (v0.1.22)
+- **`crab_line` could call `randf_range(min, max)` with `max < min`** on narrow viewports + high count → garbage spawn position. Clamped. (v0.1.18)
+- **BlackHole bullet absorb used a magic-number marker (`pos.y = 9999`) + missed `dist` recompute after `move_toward`** — replaced with direct removal + recompute. (v0.1.20)
+
+### Health / cleanup
+- **Per-frame `world_env.environment.glow_intensity = 1.8`** — already set in `_ready`, redundant work every frame. (v0.1.23)
+- **Dead `Player.max_speed/acceleration/friction` compat vars** — comment claimed compat but zero call sites. (v0.1.23)
+- **Dead `AudioManager.set_pitch_scale/get_pitch_scale`** wrappers — no callers. (v0.1.23)
+- **`set_meta("audio_mid")` for inter-method state passing** — replaced with `last_audio_mid` member var. (v0.1.23)
+- **Dead `is_playing` flag** — set once, never reset, only reader was redundant with the `game_state == "TITLE"` gate above it. (v0.1.22)
+- **Tautological `and game_state != "GAMEOVER"`** in damage_player — already guarded by early-return at top. (v0.1.24)
+- **`shake_time` accumulator unbounded** — float32 precision degrades after ~4h. `fmod` wrap. (v0.1.24)
+
+See **v0.1.18 → v0.1.24** below for full per-fix details.
+
 ## [0.1.24] - 2026-05-09
 
 A round-6 defensive correctness pass — small, real, no over-engineering.
