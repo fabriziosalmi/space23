@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - main
+  # Re-trigger when a GitHub release is published. Senza questo trigger,
+  # creare una release dopo il push del bump-commit non ri-deployava (la
+  # tag è solo un puntatore al commit già su main, che era già stato
+  # deployato dal `push`-trigger). Con questo trigger, ogni release
+  # garantisce un fresh deploy — utile per tagliare la cache CDN di Pages
+  # o per re-publishare se la prima deploy era fallita.
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
