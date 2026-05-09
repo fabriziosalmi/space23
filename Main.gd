@@ -339,7 +339,9 @@ func _on_viewport_resized() -> void:
 	# UIManager + PostFXController hanno i loro signal handlers.
 
 func _on_focus_lost() -> void:
-	if game_state == "PLAYING" and not is_paused:
+	# Pause su Alt-Tab in qualsiasi stato giocabile (PLAYING + INTRO). Skippa
+	# TITLE/GAMEOVER (non c'è gameplay attivo da congelare).
+	if (game_state == "PLAYING" or game_state == "INTRO") and not is_paused:
 		toggle_pause()
 
 # ============================================================
@@ -559,7 +561,13 @@ func difficulty() -> float:
 	return diff_for_distance(distance)
 
 func toggle_pause() -> void:
-	if game_state != "PLAYING":
+	# Pause permessa in PLAYING e INTRO. TITLE/GAMEOVER no — l'overlay pause
+	# coprirebbe il title screen / il game-over container creando confusione.
+	# Durante INTRO la pausa congela il countdown intro (intro_timer non
+	# decrementa perché _process early-returns su is_paused) → resume riprende
+	# l'intro da dove era. Senza, Alt-Tab durante l'intro lasciava il gioco
+	# girare: intro scadeva in background, player partiva morto / disorientato.
+	if game_state != "PLAYING" and game_state != "INTRO":
 		return
 	is_paused = not is_paused
 	if audio_manager and audio_manager.audio_stream_player:
@@ -666,7 +674,10 @@ func damage_player(amount: float) -> void:
 	audio_manager.play_sfx(0.4, 0.0, player.position)
 	# Edge red glow: 200ms in periferia. Letto dal post shader.
 	damage_flash_timer = DAMAGE_FLASH_DURATION
-	if player_hp <= 0 and game_state != "GAMEOVER":
+	# game_state già verificato all'inizio della funzione (early-return su
+	# GAMEOVER) — la doppia condizione `and game_state != "GAMEOVER"` era
+	# tautologica.
+	if player_hp <= 0:
 		trigger_game_over()
 
 func heal(amount: float) -> void:
@@ -746,7 +757,12 @@ func _process(delta: float) -> void:
 	# Camera shake. trauma² · MAX · smooth_noise: i peak sentono fortissimo,
 	# il decay è rapido. Skippato in pausa (early-return sopra).
 	if shake_intensity > 0.0:
-		shake_time += delta
+		# Wrap modulo: shake_time è solo phase per le sin() del noise
+		# (47*t, 23.7*t, 38.3*t, 19.1*t). Senza wrap, dopo ~4h di run shake_time
+		# raggiunge ~14400 e la float32 perde 1ms di precisione → noise quality
+		# degrada. Wrap a 1000 (≫ 2π/19.1 ≈ 0.33s — safe phase-wise) preserva
+		# precisione indefinitamente.
+		shake_time = fmod(shake_time + delta, 1000.0)
 		var trauma: float = shake_intensity / CAMERA_SHAKE_MAX
 		var t2: float = trauma * trauma
 		# Tre sin a freq decorrelate (golden ratio gap) → noise pseudo-Perlin,
@@ -930,6 +946,12 @@ func _tick_intro(delta: float) -> void:
 		player.can_move = true
 		main_camera.zoom = Vector2(1.0, 1.0)
 		main_camera.position = screen_size / 2.0
+		# Reset target_speed a 1.0 nello stesso frame del transition: senza
+		# questo, l'ultimo frame di _tick_intro lasciava target = INTRO_SPEED_MULT
+		# (0.1) e il post-dispatch lerpava verso 0.1 — a quel frame non gira
+		# _tick_playing. Il prossimo frame _tick_playing sovrascrive a 1.0,
+		# ma c'è 1 frame di "gsm punta a 0.1" inutile. Cleanup esplicito.
+		target_speed_multiplier = 1.0
 
 func _tick_track_transition(delta: float) -> void:
 	audio_manager.transition_timer -= delta
