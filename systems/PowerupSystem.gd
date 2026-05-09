@@ -55,12 +55,16 @@ func _apply_pickup(p: Dictionary) -> void:
 			explosion_system.spawn(player.position, Color(0.2, 3.0, 0.5), 0.5)
 		1:  # Railgun
 			audio_manager.play_sfx(3.5, 5.0, player.position)
-			player.fire_buff_timer = 10.0
+			# Refresh-not-overwrite: se hai già railgun attivo, prendi il max
+			# tra il residuo e i 10s del nuovo pickup. Stesso comportamento
+			# per drones sotto. Sono effetti indipendenti ora — pickup di un
+			# tipo non accorcia/cancella l'altro.
+			player.railgun_timer = max(player.railgun_timer, 10.0)
 			player.weapon_type = 1
 			explosion_system.spawn(player.position, Color(3.0, 0.5, 3.0), 0.5)
 		2:  # Drones
 			audio_manager.play_sfx(2.0, 5.0, player.position)
-			player.fire_buff_timer = 15.0
+			player.drone_timer = max(player.drone_timer, 15.0)
 			player.drone_active = true
 			explosion_system.spawn(player.position, Color(0.5, 3.0, 3.0), 0.5)
 		3:  # Black Hole

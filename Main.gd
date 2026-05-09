@@ -448,7 +448,8 @@ func _on_retry_pressed() -> void:
 	# Reset dei powerup attivi: se il player muore col railgun o coi drones
 	# attivi, non vogliamo che li conservi al respawn (sarebbe inconsistente
 	# col reset di score/distance/bombs).
-	player.fire_buff_timer = 0.0
+	player.railgun_timer = 0.0
+	player.drone_timer = 0.0
 	player.weapon_type = 0
 	player.drone_active = false
 	player.trail_history.clear()
@@ -578,6 +579,12 @@ func handle_enemy_kill(e: Dictionary) -> void:
 	add_score(SCORE_PER_KILL)
 
 func damage_player(amount: float) -> void:
+	# Guard GAMEOVER: backstop. I sistemi gameplay sono già skippati nel main
+	# loop in stato GAMEOVER, ma se un nuovo path chiamasse damage_player sul
+	# cadavere, qui evitiamo SFX hit, hit_flash e damage_flash sopra la death
+	# scene (rumore visivo/sonoro su un player invisibile).
+	if game_state == "GAMEOVER":
+		return
 	# Guard: se i-frame ancora attivi, ignoriamo il danno. Necessario perché
 	# alcuni call site (es. body collision) bypassano il check di is_invincible
 	# o lo controllano prima dell'incremento del timer di un altro hit nello
@@ -633,14 +640,17 @@ func trigger_smart_bomb() -> void:
 	trigger_boss_lens(player.position)
 	projectile_system.clear_enemy_bullets_with_fx()
 
-	# Danno globale ai nemici
+	# Danno globale ai nemici. I kill passano da handle_enemy_kill come ogni
+	# altro damage source: boss ucciso via bomb prende lensing, +5000 score,
+	# hit-stop 1.2s e l'aggiornamento di boss_hp_bar a 0 (prima la bar restava
+	# visibile dopo morte). Powerup drop e flow gain riallineati con player
+	# bullets e railgun.
 	for i in range(enemy_system.enemies.size() - 1, -1, -1):
 		var e: Dictionary = enemy_system.enemies[i]
 		e.hp -= BOMB_ENEMY_DAMAGE
 		e.hit_flash = 1.0
 		if e.hp <= 0:
-			explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 1.0)
-			score_points += 100
+			handle_enemy_kill(e)
 			enemy_system.enemies.remove_at(i)
 
 # ============================================================
@@ -665,7 +675,11 @@ func _process(delta: float) -> void:
 	# consumo avviene in _tick_playing al primo frame valido.
 	if Input.is_action_just_pressed("bomb"):
 		bomb_buffer_timer = BOMB_INPUT_BUFFER
-	if bomb_buffer_timer > 0.0:
+	# Decade SOLO quando il consumo sarebbe possibile (PLAYING reale, fuori
+	# transition e fuori hit-stop). Altrimenti BOMB_INPUT_BUFFER (180ms) scade
+	# prima che _tick_playing veda il press — un bomb premuto durante l'intro
+	# di 2s o un hit-stop boss-kill di 1.2s veniva silenziosamente perso.
+	if bomb_buffer_timer > 0.0 and game_state == "PLAYING" and not audio_manager.is_transitioning and hit_stop_timer <= 0.0:
 		bomb_buffer_timer = max(bomb_buffer_timer - delta, 0.0)
 
 	# Camera shake. trauma² · MAX · smooth_noise: i peak sentono fortissimo,
@@ -733,7 +747,24 @@ func _process(delta: float) -> void:
 	# dal y_ratio, lerpare la camera verso target_cam_x in conflitto col lerp
 	# verso player.position di _tick_gameover_fx, e consumare il bomb_buffer.
 	if game_state == "GAMEOVER":
+		# Death scene: solo gli FX visivi/audio della morte e lo sfondo continuano.
+		# I sistemi gameplay (enemies, projectiles, powerups, BH, railgun) sono
+		# congelati: prima continuavano a tickare → enemies inseguivano un
+		# cadavere invisibile, body collision sparava SFX/shake/hit-stop sul
+		# `position` invariato, enemy bullet collisions chiamavano damage_player
+		# (rumoreggiando con SFX hit + flash sul morto), e un heal in volo poteva
+		# resuscitare hp restando in stato GAMEOVER.
 		_tick_gameover_fx(delta)
+		global_speed_multiplier = lerp(global_speed_multiplier, target_speed_multiplier, 4.0 * delta)
+		if damage_flash_timer > 0.0:
+			damage_flash_timer = max(damage_flash_timer - delta, 0.0)
+		# Esplosioni continuano a decadere (la super-explosion del kill player
+		# deve completarsi visibilmente). Post-FX aggiorna zoom_blur/grayscale
+		# lerpati in _tick_gameover_fx. Background continua a renderizzare.
+		explosion_system.tick(delta)
+		_update_post_fx()
+		bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.position.x)
+		return
 	elif is_intro:
 		_tick_intro(delta)
 	elif audio_manager.is_transitioning:

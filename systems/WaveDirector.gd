@@ -181,9 +181,15 @@ func _spawn_pattern(w_data: Dictionary, diff: float, screen_size: Vector2) -> vo
 				enemy_system.spawn(6, Vector2(oct_x + col * 70 + row * 35, -100 - row * 70), diff, speed_mult, color_mod)
 		"crab_line":
 			# Wide horizontal CRAB (#7) line entering as a wall.
-			var cstart_x: float = randf_range(120, screen_size.x - 120 - count * 100)
+			# Bound clamp: con count alto su schermo stretto, il max poteva
+			# scendere sotto il min (es. count=10 su 1024px → max=-96), e
+			# randf_range con max<min ritorna garbage fuori range. Garantiamo
+			# max>=min: se il line non ci sta, parte dal margine sinistro.
+			var cspacing: float = 100.0
+			var cmax_x: float = max(120.0, screen_size.x - 120.0 - count * cspacing)
+			var cstart_x: float = randf_range(120.0, cmax_x)
 			for w in range(count):
-				enemy_system.spawn(7, Vector2(cstart_x + w * 100, -100), diff, speed_mult, color_mod)
+				enemy_system.spawn(7, Vector2(cstart_x + w * cspacing, -100), diff, speed_mult, color_mod)
 		"squid_swarm":
 			# SQUID (#8) entering from random top-edge positions, fast scouts.
 			for w in range(count):

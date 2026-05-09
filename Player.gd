@@ -324,18 +324,36 @@ func _on_ship_draw() -> void:
 
 var can_move = true
 var shoot_timer = 0.0
-var fire_buff_timer = 0.0
+# Timer separati per railgun e drones: prima un singolo `fire_buff_timer`
+# veniva sovrascritto da entrambi i pickup → drones (15s) seguito da railgun
+# (10s) accorciava la durata drones a 10s, e weapon_type non veniva mai
+# resettato dai pickup non-railgun (quindi prendere drones mentre hai railgun
+# manteneva railgun attivo per 15s con weapon_type=1).
+var railgun_timer: float = 0.0
+var drone_timer: float = 0.0
 
 func _process(delta):
+	# Pause guard. Main._process early-return su is_paused congela tutti i
+	# sistemi, ma Player._process non è subordinato a Main: senza questo guard
+	# il player continuava a muoversi, sparare (i bullet venivano pushati in
+	# player_bullets ma ProjectileSystem.tick non girava → all'unpause
+	# partivano in massa dal punto di nascita), e i timer dei powerup
+	# decadevano in pausa.
+	if main and main.is_paused:
+		return
+
 	time_passed += delta
 	var input_dir = Vector2.ZERO
-	
+
 	var engine_delta = delta * max(main.global_speed_multiplier, 0.05)
 	
-	if fire_buff_timer > 0.0:
-		fire_buff_timer -= engine_delta
+	if railgun_timer > 0.0:
+		railgun_timer -= engine_delta
 	else:
 		weapon_type = 0
+	if drone_timer > 0.0:
+		drone_timer -= engine_delta
+	else:
 		drone_active = false
 		
 	if drone_active:
@@ -370,7 +388,7 @@ func _process(delta):
 				shoot_timer = SHOOT_RATE_RAILGUN
 				main.spawn_railgun(position + Vector2(0, -30))
 				# Railgun SFX è già emesso da RailgunSystem.spawn() — non duplicare.
-			elif fire_buff_timer > 0.0:
+			elif drone_active:
 				shoot_timer = SHOOT_RATE_BUFFED  # Più veloce e 4 cannoni!
 				main.spawn_player_bullet(position + Vector2(-30, -10))
 				main.spawn_player_bullet(position + Vector2(-15, -20))
