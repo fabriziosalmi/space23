@@ -182,12 +182,6 @@ func get_current_drop_time() -> float:
 func get_current_bpm() -> float:
 	return playlist[current_track_idx].get("bpm", DEFAULT_BPM)
 
-func set_pitch_scale(scale: float):
-	audio_stream_player.pitch_scale = scale
-	
-func get_pitch_scale() -> float:
-	return audio_stream_player.pitch_scale
-
 func _on_song_finished():
 	is_transitioning = true
 	transition_timer = 5.0

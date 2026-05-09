@@ -112,6 +112,10 @@ var planet_sequence: int = 0
 var planet_distance_accum: float = PLANET_INTERVAL_PX * 0.85  # seed: first one entro ~5s di gioco
 var current_palette_tint: Vector3 = Vector3(0.5, 0.3, 0.8)
 var last_audio_low: float = 0.0
+# Cached audio_mid per il passaggio da update_background → _draw. Prima il
+# valore veniva passato via `set_meta("audio_mid", ...) / get_meta(...)` —
+# pattern sloppy che usava il KV-store di Object per un membro normale.
+var last_audio_mid: float = 0.0
 
 var deep_layer: Node2D
 var deep_textures: Dictionary = {}
@@ -445,9 +449,8 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 					ast.rot += ast.rot_speed * effective_speed * delta
 		li += 1
 					
-	# Pass audio_mid to draw
-	# We can store it as meta or just call queue_redraw() and use a property
-	set_meta("audio_mid", audio_mid)
+	# Pass audio_mid to _draw via member var (preferito a set_meta).
+	last_audio_mid = audio_mid
 	queue_redraw()
 
 func _has_visible_landmark() -> bool:
@@ -656,7 +659,7 @@ func _spawn_planet() -> void:
 
 func _draw():
 	var time = Time.get_ticks_msec() / 1000.0
-	var audio_mid = get_meta("audio_mid") if has_meta("audio_mid") else 0.0
+	var audio_mid: float = last_audio_mid
 
 	# 1. DRAW LAYER DEEP
 	for e in layer_deep:

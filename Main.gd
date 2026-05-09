@@ -901,10 +901,6 @@ func _process(delta: float) -> void:
 	if audio_manager.audio_low > 0.75:
 		add_shake(audio_manager.audio_low * 3.0)
 
-	# Glow stabile
-	if world_env and world_env.environment:
-		world_env.environment.glow_intensity = 1.8
-
 	# Background scroll (con kick→parallasse boost interno a BackgroundRenderer).
 	# Passiamo player.position.x: il BackgroundRenderer calcola un viewport
 	# offset position-keyed (smoothato + clampato) e ogni layer shifta in base

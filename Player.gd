@@ -21,11 +21,6 @@ const SHOOT_RATE_BUFFED: float = 0.08
 const SHOOT_RATE_RAILGUN: float = 0.5
 const DRONE_SHOOT_RATE: float = 0.15
 
-# Compat: alcuni accessi vengono ancora fatti via `player.max_speed`. I keep `max_speed`
-# come alias sul costante per non rompere `Main.gd`.
-var max_speed: float = MAX_SPEED
-var acceleration: float = ACCELERATION
-var friction: float = FRICTION
 var velocity = Vector2.ZERO
 var screen_size: Vector2
 
