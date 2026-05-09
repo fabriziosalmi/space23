@@ -333,32 +333,43 @@ var railgun_timer: float = 0.0
 var drone_timer: float = 0.0
 
 func _process(delta):
-	# Pause guard. Main._process early-return su is_paused congela tutti i
-	# sistemi, ma Player._process non è subordinato a Main: senza questo guard
-	# il player continuava a muoversi, sparare (i bullet venivano pushati in
-	# player_bullets ma ProjectileSystem.tick non girava → all'unpause
-	# partivano in massa dal punto di nascita), e i timer dei powerup
-	# decadevano in pausa.
-	if main and main.is_paused:
+	# Freeze guards: Main._process congela i `*_system.tick` su pause e su
+	# hit-stop, ma Player._process non è subordinato a Main e gira sempre.
+	# Senza questi guard:
+	#   - is_paused: il player si muoveva, sparava (bullet accumulati in
+	#     player_bullets ma ProjectileSystem.tick non girava → all'unpause
+	#     partivano in massa dal punto di nascita), powerup decadevano.
+	#   - hit_stop_timer > 0: stesso pattern durante il freeze post-kill
+	#     (fino a 1.2s su boss kill). Bullet sparati durante hit-stop si
+	#     accumulavano e partivano in burst alla fine del freeze.
+	if main and (main.is_paused or main.hit_stop_timer > 0.0):
 		return
 
 	time_passed += delta
 	var input_dir = Vector2.ZERO
 
-	var engine_delta = delta * max(main.global_speed_multiplier, 0.05)
-	
+	# Tutti i Player timer decadono in tempo reale (delta puro). Prima alcuni
+	# usavano `engine_delta = delta * gsm` causando scaling indesiderati col
+	# tempo del mondo:
+	#   - drop boost (gsm=4×): railgun "10s" durava 2.5s reali, drone "15s"
+	#     durava 3.75s reali, dash_cooldown "1s" durava 0.25s reali (player
+	#     dasha 4× più frequente nel momento più caotico — feature accidentale)
+	#   - intro/transition (gsm 0.1-0.5): timer 5-10× più lunghi del nominale
+	# Era misto: shoot_timer/dash_timer/iframe già in real time, mentre
+	# powerup/cooldown in engine time. Ora tutto consistente: il pickup di
+	# 10s dura 10s wallclock indipendente da gsm.
 	if railgun_timer > 0.0:
-		railgun_timer -= engine_delta
+		railgun_timer -= delta
 	else:
 		weapon_type = 0
 	if drone_timer > 0.0:
-		drone_timer -= engine_delta
+		drone_timer -= delta
 	else:
 		drone_active = false
-		
+
 	if drone_active:
-		drone_angle += engine_delta * 4.0
-		drone_shoot_timer -= engine_delta
+		drone_angle += delta * 4.0
+		drone_shoot_timer -= delta
 		if drone_shoot_timer <= 0:
 			drone_shoot_timer = DRONE_SHOOT_RATE
 			var p1 = position + Vector2(cos(drone_angle), sin(drone_angle)) * 60.0
@@ -414,7 +425,7 @@ func _process(delta):
 				_play_shoot_sfx()
 	
 	if dash_cooldown > 0:
-		dash_cooldown -= engine_delta
+		dash_cooldown -= delta
 		
 	# Tick i-frame timer post-damage; consuma indipendentemente dal dash.
 	if hit_iframe_timer > 0.0:

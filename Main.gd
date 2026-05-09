@@ -16,7 +16,15 @@ const ENEMY_BULLET_POOL_SIZE: int = 2500
 const PLAYER_BULLET_DAMAGE: int = 1
 const ENEMY_BODY_COLLISION_DAMAGE: float = 30.0
 const ENEMY_BULLET_DAMAGE: float = 15.0
-const PLAYER_BULLET_HIT_RADIUS: float = 35.0   # player bullet → enemy
+# Player bullet vs enemy: AABB-padding (vedi EnemySystem._aabb_half_for_type).
+# La collision è "bullet center inside (enemy_AABB + padding)" — sostituisce
+# il precedente hit_radius=35 contro `e.pos` come punto, che era corretto per
+# scout/fighter (AABB 15-25px) ma rendeva ~85% della silhouette del boss
+# (mothership AABB 150×80) phantom: i bullet che colpivano visivamente le ali
+# del boss passavano attraverso senza danno. Padding 20 mantiene l'area
+# effettiva degli enemy piccoli simile (scout AABB 15×15 + 20 → 35×35,
+# pari al vecchio 35-radius circle) e dà al boss copertura reale.
+const PLAYER_BULLET_HIT_PADDING: float = 20.0
 const GRAZE_RADIUS: float = 35.0               # bullet → player
 
 # Score
@@ -122,6 +130,15 @@ var heartbeat_timer: float = 0.0
 # Standard fighting/rhythm games: 6-10 frame ≈ 0.10-0.17s.
 const BOMB_INPUT_BUFFER: float = 0.18
 var bomb_buffer_timer: float = 0.0
+
+# Accumulator float per il top-half time bonus. Prima il bonus era
+#   score_points += int(15 * delta * (1 - y_ratio))
+# Con delta ≈ 0.0166 a 60fps e (1 - y_ratio) ≤ 0.93, l'argomento di int()
+# era sempre < 1.0 → troncamento → 0 ogni frame. La meccanica DMC risk/reward
+# "stai in top-half = guadagni score" non ha MAI dato score (solo flow_state
+# cresceva). Ora accumuliamo float, flushiamo l'integer part appena ≥ 1.
+# Reset al retry. ~14 pt/sec di max teorico (player a y=top).
+var score_bonus_accum: float = 0.0
 
 # Game state machine
 var game_state: String = "TITLE"  # TITLE / INTRO / PLAYING / GAMEOVER
@@ -439,6 +456,7 @@ func _on_retry_pressed() -> void:
 	player_hp = PLAYER_HP_MAX
 	player_bombs = STARTING_BOMBS
 	score_points = 0
+	score_bonus_accum = 0.0
 	flow_state = 0.0
 	distance = 0.0
 
@@ -897,6 +915,22 @@ func _tick_track_transition(delta: float) -> void:
 		audio_manager.is_transitioning = false
 		audio_manager.current_track_idx = (audio_manager.current_track_idx + 1) % audio_manager.playlist.size()
 		audio_manager.load_and_play_track(audio_manager.current_track_idx)
+		# Slate wipe: pulizia dello stato gameplay residuo dalla traccia
+		# precedente. Senza questo, un boss non killato in tempo (raro ma
+		# possibile: ultimo HP entra in transition con boss vivo) sopravvive
+		# durante i 5s di transition al rallenty, entra nella nuova traccia
+		# col proprio AI che continua, e quando la nuova traccia raggiunge
+		# `track_len - 30s` `_check_boss_spawn` ne spawna un altro → due boss
+		# simultanei. Inoltre i bullet vecchi e i powerup in caduta
+		# crossano awkwardly nella nuova palette.
+		# Esplosioni NON cleared (decay-based, taglio mid-decay sembra glitch).
+		enemy_system.clear()
+		projectile_system.clear_all()
+		powerup_system.clear()
+		railgun_system.clear()
+		bh_system.clear()
+		if is_instance_valid(ui_manager):
+			ui_manager.update_boss_hp(0, 100)  # nasconde la boss bar
 		# Nuova traccia → boss e drop event della prossima traccia devono ri-armarsi.
 		has_boss_spawned = false
 		drop_event_triggered = false
@@ -928,7 +962,14 @@ func _tick_playing(delta: float) -> void:
 	# velocità — il mondo resta a 1.0). Il flow_state contribuisce ancora
 	# come bias graduale slow-rate (0.08/s gain → percepito come trend, non
 	# oscillazione). Niente più sync continuo.
-	target_speed_multiplier = base_target_speed * (1.0 + flow_state * FLOW_SPEED_BONUS)
+	# Flow bonus ADDITIVO (era moltiplicativo: `base * (1 + flow * 0.8)`).
+	# Con base = DROP_SPEED_MULT (4.0) e flow = 1.0, il moltiplicativo
+	# raggiungeva 7.2× → boss combat con bullet hell a 1440 px/s, fisicamente
+	# non dodgeabile. Additivo: max = 4.0 + 0.8 = 4.8. Tetto stabile,
+	# predicibile, e flow continua a contribuire allo "spike" durante drop
+	# (+20% sopra base) senza esplodere geometricamente. Fuori drop il
+	# comportamento è quasi identico (1.0 + flow*0.8 ≈ 1.0 * (1 + flow*0.8)).
+	target_speed_multiplier = base_target_speed + flow_state * FLOW_SPEED_BONUS
 
 	# Smart bomb: consuma dal buffer (vedi _process) — copre i casi in cui il
 	# press è caduto durante intro/transition/hit-stop, evitando "il gioco mi ha
@@ -938,10 +979,17 @@ func _tick_playing(delta: float) -> void:
 		trigger_smart_bomb()
 
 	# DMC Risk/Reward: nel mezzo schermo alto si guadagna flow + bonus score.
+	# Score bonus via float accumulator (vedi commento su `score_bonus_accum`):
+	# l'int truncation di `15 * delta * (1 - y_ratio)` era sempre 0 — flush
+	# l'integer part dall'accumulatore appena raggiunge 1.
 	var player_y_ratio: float = player.position.y / screen_size.y
 	if player_y_ratio < FLOW_TOP_HALF_THRESHOLD:
 		flow_state = min(flow_state + delta * FLOW_GAIN_PER_SEC, 1.0)
-		score_points += int(15 * delta * (1.0 - player_y_ratio))
+		score_bonus_accum += 15.0 * delta * (1.0 - player_y_ratio)
+		if score_bonus_accum >= 1.0:
+			var integer_part: int = int(score_bonus_accum)
+			score_points += integer_part
+			score_bonus_accum -= integer_part
 	else:
 		flow_state = max(flow_state - delta * FLOW_DECAY_PER_SEC, 0.0)
 

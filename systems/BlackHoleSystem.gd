@@ -36,6 +36,12 @@ func tick(delta: float) -> void:
 				var dist: float = e.pos.distance_to(bh.pos)
 				if dist < Main.BH_GRAVITY_RADIUS:
 					e.pos = e.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 200.0 * delta)
+					# Recompute dist post-move: il move_toward può aver portato
+					# l'enemy DENTRO l'absorb radius nello stesso frame. Senza
+					# questo recompute la `dist` cached era stale e l'absorb
+					# scattava 1 frame dopo (raramente percepibile, ma con BH
+					# di gravità forte e enemy al boundary, il delay si sente).
+					dist = e.pos.distance_to(bh.pos)
 				if dist < Main.BH_ABSORB_RADIUS:
 					e.hp -= 100
 					if e.hp <= 0 and main:
@@ -43,12 +49,22 @@ func tick(delta: float) -> void:
 						enemy_system.enemies.remove_at(ei)
 
 		if projectile_system:
-			for b in projectile_system.active_enemy_bullets:
+			# Reverse iter per la rimozione in-place via swap-and-pop (vedi
+			# `_remove_enemy_bullet_at`). Sostituisce il vecchio pattern del
+			# marker "b.pos.y = 9999" che faceva sopravvivere il bullet 1 frame
+			# extra (cull condition `pos.y > screen + 100` triggerava nel next
+			# tick), e nel mentre il bullet "fantasma" a y=9999 ancora occupava
+			# uno slot del pool e si beccava i check di gravity/homing/cull
+			# inutili.
+			var bullets: Array = projectile_system.active_enemy_bullets
+			for bi in range(bullets.size() - 1, -1, -1):
+				var b: Dictionary = bullets[bi]
 				var dist: float = b.pos.distance_to(bh.pos)
 				if dist < Main.BH_GRAVITY_RADIUS:
 					b.pos = b.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 300.0 * delta)
+					dist = b.pos.distance_to(bh.pos)  # recompute stesso del enemy loop
 				if dist < Main.BH_ABSORB_RADIUS:
-					b.pos.y = 9999  # marker per pulizia in ProjectileSystem
+					projectile_system._remove_enemy_bullet_at(bi)
 	queue_redraw()
 
 func clear() -> void:

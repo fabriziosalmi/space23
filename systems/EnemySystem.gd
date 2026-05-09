@@ -17,6 +17,18 @@ var screen_size: Vector2 = Vector2.ZERO
 
 var enemies: Array = []
 
+# AABB half-extents per tipo, calcolate lazy dai `pts`. Cache: la prima call
+# a `_aabb_half_for_type` riempie l'array, mai più mutata. Usata da:
+#   - ProjectileSystem._tick_player_bullets (player_bullet vs enemy)
+#   - EnemySystem.tick (body collision)
+# Sostituisce i precedenti hit_radius=35 (bullet) e hb=15 (body) trattati come
+# distanze contro `e.pos` come punto. Erano corretti per scout/fighter
+# (AABB ≤ 25) ma sui boss/dread/mothership (AABB 28-150) l'85%+ della
+# silhouette era "phantom": i player bullet attraversavano le ali del boss
+# senza danno, e il player poteva parcheggiarsi *dentro* il mothership senza
+# beccare body damage. AABB risolve entrambi.
+var _aabb_cache: Array = []
+
 const ENEMY_TYPES := [
 	{ # 0: SCOUT (small triangle, fast)
 		"hp": 2, "speed": [150.0, 250.0], "color": Color(0.1, 0.8, 0.3),
@@ -124,8 +136,30 @@ func spawn(type_idx: int, pos: Vector2, diff: float, speed_mult: float = 1.0, co
 		"color": e_type.color * color_mod,
 		"pts": PackedVector2Array(e_type.pts),
 		"hit_flash": 0.0,
-		"invader_dir": 1.0 if randf() > 0.5 else -1.0
+		"invader_dir": 1.0 if randf() > 0.5 else -1.0,
+		# AABB half-extents per collision (point-in-box) — vedi _aabb_cache.
+		"hit_aabb": _aabb_half_for_type(type_idx)
 	})
+
+# Calcola le half-extents (hw, hh) della bounding box dei `pts` per tipo, e
+# le cacha per subsequent call. Usa `max(abs(min), abs(max))` per gestire
+# i casi non-simmetrici (es. squid pts: y va da -20 a +14 → hh = 20).
+func _aabb_half_for_type(idx: int) -> Vector2:
+	if _aabb_cache.is_empty():
+		for t in ENEMY_TYPES:
+			var min_x: float = INF
+			var max_x: float = -INF
+			var min_y: float = INF
+			var max_y: float = -INF
+			for p in t.pts:
+				min_x = min(min_x, p.x)
+				max_x = max(max_x, p.x)
+				min_y = min(min_y, p.y)
+				max_y = max(max_y, p.y)
+			var hw: float = max(abs(min_x), abs(max_x))
+			var hh: float = max(abs(min_y), abs(max_y))
+			_aabb_cache.append(Vector2(hw, hh))
+	return _aabb_cache[idx]
 
 func clear() -> void:
 	enemies.clear()
@@ -154,13 +188,21 @@ func tick(delta: float) -> void:
 		if e.ai_type == Main.BOSS_TYPE_INDEX and main and is_instance_valid(main.ui_manager):
 			main.ui_manager.update_boss_hp(e.hp, e.max_hp)
 
-		# Collisione corpo nave-nemico (squared distance: niente sqrt nell'hot path).
+		# Collisione corpo nave-nemico — point-in-box (player center inside
+		# enemy_AABB expanded by player body radius). Sostituisce il vecchio
+		# distance_squared < 15² che trattava il nemico come punto: un boss
+		# da 300×180 era hittable solo entro 15px dal centro, quindi il
+		# player poteva *parcheggiarsi dentro la silhouette visibile* senza
+		# beccare body damage.
 		# Check sia su is_invincible (stato dal frame precedente) che su
 		# hit_iframe_timer (stato corrente in-frame): blocca lo stack di N body
 		# collision sullo stesso frame che altrimenti rimuovono N nemici "free"
 		# (HP è protetto da damage_player ma le rimozioni e i side-FX no).
 		var hb: float = player.HITBOX_RADIUS_BODY
-		if e.pos.distance_squared_to(player.position) < hb * hb and not player.is_invincible and player.hit_iframe_timer <= 0.0:
+		var aabb: Vector2 = e.hit_aabb
+		var dx: float = abs(e.pos.x - player.position.x)
+		var dy: float = abs(e.pos.y - player.position.y)
+		if dx < aabb.x + hb and dy < aabb.y + hb and not player.is_invincible and player.hit_iframe_timer <= 0.0:
 			explosion_system.spawn(player.position, Color(3.0, 0.5, 0.5), 0.8)
 			main.add_shake(25.0)
 			main.trigger_hit_stop(0.05)

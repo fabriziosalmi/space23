@@ -109,14 +109,23 @@ func _tick_player_bullets(delta: float, black_holes: Array) -> void:
 			player_bullets.remove_at(i)
 			continue
 
-		# Collisione con nemici (squared distance: hot inner loop, ~6K check/frame
-		# nel worst case → uno sqrt risparmiato per ogni iter).
+		# Collisione con nemici — point-in-box (bullet center inside
+		# enemy_AABB expanded by PLAYER_BULLET_HIT_PADDING). Sostituisce il
+		# vecchio `distance_squared < 35²` che trattava il nemico come punto:
+		# il boss mothership (300×180 silhouette) era hittable solo nel suo
+		# pixel center 35-radius circle, mentre i player bullet che colpivano
+		# le ali del boss passavano attraverso senza danno. AABB-based check
+		# usa la silhouette reale; padding 20 mantiene il "feel" sui piccoli
+		# (scout AABB 15×15 + 20 → 35×35 ≈ vecchio 35-radius).
+		# Hot inner loop (~6K check/frame nel worst case): point-in-box è
+		# 2 abs + 2 confronti contro AABB, più cheap dello squared dist.
 		var hit: bool = false
 		var enemies: Array = enemy_system.enemies if enemy_system else []
-		var hr_sq: float = Main.PLAYER_BULLET_HIT_RADIUS * Main.PLAYER_BULLET_HIT_RADIUS
+		var pad: float = Main.PLAYER_BULLET_HIT_PADDING
 		for j in range(enemies.size() - 1, -1, -1):
 			var e: Dictionary = enemies[j]
-			if b.pos.distance_squared_to(e.pos) < hr_sq:
+			var aabb: Vector2 = e.hit_aabb
+			if abs(b.pos.x - e.pos.x) < aabb.x + pad and abs(b.pos.y - e.pos.y) < aabb.y + pad:
 				e.hp -= Main.PLAYER_BULLET_DAMAGE
 				hit = true
 				e.hit_flash = 0.1
@@ -168,8 +177,15 @@ func _tick_enemy_bullets(delta: float, gsm: float, black_holes: Array) -> void:
 			main.trigger_hit_stop(0.02)
 			_remove_enemy_bullet_at(i)
 			main.damage_player(Main.ENEMY_BULLET_DAMAGE)
-		elif dist_sq < graze_sq and not b.has("grazed") and not iframed:
-			b["grazed"] = true
+		elif dist_sq < graze_sq and not b.grazed and not iframed:
+			# `Dictionary.has(key)` ritorna true se la chiave esiste, NON se il
+			# valore è truthy. I bullet del pool hanno `grazed: false` settato
+			# da `_init_pool` e da `spawn_enemy_bullet` → la chiave esiste
+			# sempre → `not b.has("grazed")` era SEMPRE false → il branch graze
+			# non si eseguiva mai. Niente +50 score, niente +0.10 flow, niente
+			# graze SFX/explosion. Read del valore via `b.grazed` (o
+			# equivalentemente `b["grazed"]`) ripristina la meccanica.
+			b.grazed = true
 			main.add_score(Main.SCORE_PER_GRAZE)
 			main.gain_flow(Main.FLOW_GAIN_PER_GRAZE)
 			explosion_system.spawn(b.pos, Color(1.0, 1.0, 1.0, 0.5), 0.2)
