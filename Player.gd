@@ -379,6 +379,18 @@ func _process(delta):
 			# include il camera offset, quindi senza compensazione il target balla
 			# con la camera e la nave segue il jitter (frustrante in mouse/touch).
 			var target_pos = get_global_mouse_position() - main.main_camera.offset
+			# Clamp del target alla playable area (gli stessi bound del clamp di
+			# `position` poco sotto). Senza questo, un cursore tenuto fuori
+			# schermo (web fullscreen, mouse drag oltre il bordo) lascia
+			# `target_pos` molto distante: la nave si clamperebbe al bordo
+			# (position.x = screen_size.x - 80) ma la dead-zone resterebbe
+			# violata (distance² ≫ 225) → input_dir continua a spingere verso
+			# il bordo all'infinito, e la silhouette resta banked al massimo
+			# in roll. Clampando il target, la dead-zone si disengage non
+			# appena la nave raggiunge il bordo: roll torna a 0, niente input
+			# fantasma.
+			target_pos.x = clamp(target_pos.x, 80.0, screen_size.x - 80.0)
+			target_pos.y = clamp(target_pos.y, 80.0, screen_size.y - 80.0)
 			if position.distance_squared_to(target_pos) > 225.0:  # 15² — dead-zone
 				input_dir += (target_pos - position).normalized()
 

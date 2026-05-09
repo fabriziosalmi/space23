@@ -413,12 +413,20 @@ func _on_retry_pressed() -> void:
 	audio_manager.is_transitioning = false
 	audio_manager.transition_timer = 0.0
 
-	# Reset transient timers gameplay (shake, hit-stop, lensing, input buffer):
-	# se erano attivi nel momento del game-over, sopravviverebbero al retry.
+	# Reset transient timers gameplay (shake, hit-stop, lensing, input buffer,
+	# damage edge glow, heartbeat): se erano attivi nel momento del game-over,
+	# sopravviverebbero al retry. Damage_flash e heartbeat sono in pratica già
+	# azzerati al retry (damage_flash decade in 200ms < gameover scene 3s+;
+	# heartbeat else-branch lo resetta al primo frame con HP=100), ma li
+	# elenchiamo esplicitamente come backstop — un futuro refactor che
+	# mantenesse damage_flash live in GAMEOVER, o cambiasse l'init di
+	# player_hp al respawn, romperebbe l'invariante silenziosamente.
 	shake_intensity = 0.0
 	hit_stop_timer = 0.0
 	boss_lens_timer = 0.0
 	bomb_buffer_timer = 0.0
+	damage_flash_timer = 0.0
+	heartbeat_timer = 0.0
 
 	# Restore tempo gameplay (target_speed era 0.0 dal trigger_game_over).
 	global_speed_multiplier = 1.0

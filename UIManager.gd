@@ -288,7 +288,13 @@ func _hide_play_ui() -> void:
 	hp_bar.hide()
 	flow_label.hide()
 	bomb_label.hide()
-	bomb_button.hide()
+	# Gate sullo stesso check di _show_play_ui (mobile/web): asimmetrico prima,
+	# il show-side era gated mentre l'hide-side hidava sempre — funzionalmente
+	# equivalente (su desktop bomb_button è già hidden dall'init), ma il pair
+	# letto in coppia dava l'idea che il bomb_button potesse comparire su
+	# desktop in un certo path. Ora i due metodi sono speculari.
+	if OS.has_feature("mobile") or OS.has_feature("web"):
+		bomb_button.hide()
 
 func set_pause_visible(visible_state: bool) -> void:
 	pause_dim.visible = visible_state
