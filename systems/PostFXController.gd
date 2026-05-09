@@ -22,6 +22,19 @@ func setup(screen_size: Vector2) -> void:
 	mat.shader = preload("res://shaders/post.gdshader")
 	rect.material = mat
 	add_child(rect)
+	_apply_aspect(screen_size)
+	# Resize: BH lens / radial blur mask vogliono restare circolari su qualsiasi
+	# aspect. Senza questo, su mobile portrait (~0.56) o schermi quadrati il
+	# vecchio valore hardcoded 1.77 deformava le mask in ellissi orizzontali.
+	get_tree().root.size_changed.connect(func():
+		var s: Vector2 = get_viewport().get_visible_rect().size
+		rect.size = s
+		_apply_aspect(s)
+	)
+
+func _apply_aspect(s: Vector2) -> void:
+	if rect and rect.material and s.y > 0.0:
+		rect.material.set_shader_parameter("aspect", s.x / s.y)
 
 # ===== Setters idiomatici =====
 

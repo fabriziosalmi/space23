@@ -26,6 +26,12 @@ uniform float perspective_fan = 0.05;
 // Soft (mix factor 0.4 al picco × edge_mask) — sells "ho preso danno" senza
 // ostacolare leggibilità del centro dove c'è la nave.
 uniform float damage_flash = 0.0;
+// Aspect ratio (screen_w / screen_h), passed by GDScript at setup + on resize.
+// Sostituisce il magic number 1.77 (hardcoded 16:9) usato per correggere
+// le mask circolari (BH lensing, radial blur). Su mobile portrait (~0.56) o
+// schermi quadrati il vecchio valore stirava le mask in orizzontale → BH
+// e blur diventavano ellissi sottili invece di cerchi.
+uniform float aspect = 1.7777778;
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
@@ -50,7 +56,7 @@ void fragment() {
 	bool in_bh = false;
 	if (bh_intensity > 0.0) {
 		vec2 bh_dir = uv - bh_pos;
-		bh_dir.x *= 1.77; // Correzione aspect ratio
+		bh_dir.x *= aspect; // Correzione aspect ratio (uniform, era hardcoded 1.77)
 		float bh_dist = length(bh_dir);
 		if (bh_dist < 0.5) {
 			float pull = smoothstep(0.5, 0.0, bh_dist);
@@ -122,7 +128,7 @@ void fragment() {
 		if (radial_blur > 0.0) {
 			vec2 from_ship = uv - ship_uv;
 			vec2 from_ship_aspect = from_ship;
-			from_ship_aspect.x *= 1.77;  // 16:9 → make mask circular
+			from_ship_aspect.x *= aspect;  // mask circolare a qualsiasi aspect
 			float dist_ship = length(from_ship_aspect);
 			float mask = smoothstep(0.18, 0.55, dist_ship);
 			vec3 rb = vec3(0.0);

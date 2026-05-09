@@ -503,6 +503,11 @@ func _on_retry_pressed() -> void:
 	audio_manager.load_and_play_track(0)
 
 	if is_instance_valid(ui_manager):
+		# Se l'utente preme ui_accept (instant retry shortcut) prima di
+		# submitare il nome, lo score sparisce. auto_save_pending_score
+		# salva con il testo digitato (o "ANON" se vuoto) — niente più
+		# "ho fatto un punteggio alto e non si è salvato".
+		ui_manager.auto_save_pending_score()
 		ui_manager.hide_game_over()
 		ui_manager.update_boss_hp(0, 100)
 
