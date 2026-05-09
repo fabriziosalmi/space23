@@ -432,7 +432,7 @@ func _input(event):
 			start_pressed.emit()
 
 func _on_name_submitted(new_text: String):
-	new_text = new_text.strip_edges().to_upper()
+	new_text = _sanitize_name(new_text)
 	if new_text == "":
 		new_text = "ANON"
 	name_input.hide()
@@ -440,6 +440,20 @@ func _on_name_submitted(new_text: String):
 	retry_button.show()
 	retry_button.grab_focus()
 	name_submitted.emit(new_text)
+
+# Pulisce il nome del pilota: solo A-Z, 0-9, spazio. Cap a 8 chars. Senza
+# questo filtro un nome con tab/newline o emoji rompeva il layout fix-width
+# del leaderboard (es. "FOO\tBAR" shiftava la colonna score). LineEdit
+# permette qualsiasi unicode in input.
+func _sanitize_name(raw: String) -> String:
+	var upper: String = raw.strip_edges().to_upper()
+	var out: String = ""
+	for c in upper:
+		if (c >= "A" and c <= "Z") or (c >= "0" and c <= "9") or c == " ":
+			out += c
+		if out.length() >= 8:
+			break
+	return out
 
 func show_game_over(distance_m: int, kill_score: int):
 	var total: int = distance_m + kill_score
@@ -529,24 +543,52 @@ func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, 
 func load_highscores():
 	highscores.clear()
 	if FileAccess.file_exists(SAVE_PATH):
-		var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
-		var json = JSON.new()
-		var error = json.parse(file.get_as_text())
-		if error == OK:
-			var data = json.get_data()
-			if typeof(data) == TYPE_ARRAY:
-				highscores = data
-				
+		# `FileAccess.open` può ritornare null anche se file_exists è true
+		# (permessi, file lockato, web export con private mode che blocca
+		# IndexedDB). Senza il guard, il successivo `file.get_as_text()`
+		# crashava il caricamento del leaderboard.
+		var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+		if file != null:
+			var json := JSON.new()
+			var error: int = json.parse(file.get_as_text())
+			if error == OK:
+				var data = json.get_data()
+				if typeof(data) == TYPE_ARRAY:
+					# Validiamo ogni entry: il save format può corrompersi
+					# (crash mid-write, edit manuale, vecchio formato dopo
+					# uno schema change). Senza validation, una entry
+					# malformata crashava _update_leaderboard_display
+					# (es. `entry.name.substr(0,8)` se name è null o int).
+					for e in data:
+						if _is_valid_highscore_entry(e):
+							highscores.append(e)
+
 	_update_leaderboard_display()
+
+func _is_valid_highscore_entry(e) -> bool:
+	if typeof(e) != TYPE_DICTIONARY:
+		return false
+	if not e.has("name") or not e.has("score"):
+		return false
+	if typeof(e.get("name")) != TYPE_STRING:
+		return false
+	var s_type: int = typeof(e.get("score"))
+	if s_type != TYPE_INT and s_type != TYPE_FLOAT:
+		return false
+	return true
 
 func save_highscore(player_name: String, score: int):
 	highscores.append({"name": player_name, "score": score})
 	highscores.sort_custom(func(a, b): return a["score"] > b["score"])
 	if highscores.size() > 5:
 		highscores.resize(5)
-		
-	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	file.store_string(JSON.stringify(highscores))
+
+	# Guard null: FileAccess.open in WRITE può fallire (disco pieno,
+	# permessi negati, web private mode). Senza, il successivo
+	# `file.store_string` crashava silenziosamente l'intero submit-name flow.
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(highscores))
 	_update_leaderboard_display()
 
 func _update_leaderboard_display():

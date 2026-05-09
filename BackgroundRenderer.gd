@@ -335,6 +335,22 @@ func _init_layers():
 			"length": randf_range(80.0, 150.0)
 		})
 
+	# Resize: ricomputa strip dimensions + nebula overscan. Senza questo,
+	# `strip_width` e `nebula_bg.size` restavano calcolati dallo screen
+	# iniziale → su resize il parallasse usava una strip proporzionata
+	# al vecchio viewport (lateral offset clamps wrong, depth scaling off)
+	# e la nebula lasciava bordi neri se il viewport è cresciuto.
+	get_window().size_changed.connect(_on_viewport_resized)
+
+func _on_viewport_resized() -> void:
+	screen_size = get_viewport_rect().size
+	strip_width = screen_size.x * STRIP_WIDTH_MULT
+	strip_pad = (strip_width - screen_size.x) * 0.5
+	max_player_offset = strip_pad / DEPTH_FOREGROUND
+	if nebula_bg:
+		nebula_bg.size = screen_size + Vector2(400, 400)
+		nebula_bg.position = Vector2(-200, -200)
+
 func update_background(delta: float, global_speed_multiplier: float, c_bg: Color, c_neb1: Color, c_neb2: Color, audio_low: float, audio_mid: float, audio_high: float = 0.0, player_x: float = -1.0):
 	# Cassa = boost momentaneo dello scroll. Pulsa con la traccia.
 	var effective_speed: float = global_speed_multiplier + audio_low * KICK_PARALLAX_BOOST

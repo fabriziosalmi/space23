@@ -82,7 +82,6 @@ const FLOW_SPEED_BONUS: float = 0.8
 # ========== STATO GAMEPLAY ==========
 
 var distance: float = 0.0
-var is_playing: bool = false
 var global_speed_multiplier: float = 1.0
 var target_speed_multiplier: float = 1.0
 var score_points: int = 0
@@ -311,6 +310,38 @@ func _ready() -> void:
 	player.can_move = false
 	game_state = "TITLE"
 
+	# Resize handler: ricomputiamo screen_size + camera center + propaghiamo
+	# screen_size ai sistemi che lo usano per cull boundaries (enemy, projectile,
+	# powerup) e per layout (background). Senza questo, su resize la camera
+	# restava centrata sul vecchio schermo, i bullets/enemies venivano cullati
+	# alle vecchie y coordinate, e il background renderizzava una strip
+	# proporzionata al vecchio viewport.
+	get_window().size_changed.connect(_on_viewport_resized)
+
+	# Focus loss = auto-pause. Senza questo, Alt-Tab durante il gameplay
+	# faceva continuare il gioco in background (musica, bullet hell, boss
+	# combat) → ritorno con player morto e score perso. Pattern QoL standard.
+	# Solo durante PLAYING reale (non durante GAMEOVER, INTRO, TITLE).
+	get_window().focus_exited.connect(_on_focus_lost)
+
+func _on_viewport_resized() -> void:
+	screen_size = get_viewport_rect().size
+	if main_camera:
+		# La camera è centrata + parallasse-tracked sul player in _tick_playing.
+		# Riposizioniamo al centro del nuovo viewport: al frame next, il
+		# parallasse converge sulla nuova target_cam_x.
+		main_camera.position = screen_size / 2.0
+	# Propaga screen_size ai sistemi (cull boundaries, AI movement bounds).
+	if enemy_system: enemy_system.screen_size = screen_size
+	if projectile_system: projectile_system.screen_size = screen_size
+	if powerup_system: powerup_system.screen_size = screen_size
+	# bg_renderer ha il suo proprio handler (strip recompute + nebula_bg).
+	# UIManager + PostFXController hanno i loro signal handlers.
+
+func _on_focus_lost() -> void:
+	if game_state == "PLAYING" and not is_paused:
+		toggle_pause()
+
 # ============================================================
 # INPUT MAP
 # ============================================================
@@ -387,7 +418,6 @@ func _setup_input_actions() -> void:
 func _on_start_pressed() -> void:
 	game_state = "INTRO"
 	is_intro = true
-	is_playing = true
 	audio_manager.load_and_play_track(0)
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 	main_camera.zoom = Vector2(INTRO_ZOOM, INTRO_ZOOM)
@@ -758,9 +788,6 @@ func _process(delta: float) -> void:
 			current_c_neb2 = ca[2].lerp(cb[2], phase)
 
 		bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, fake_pulse, audio_manager.audio_mid, audio_manager.audio_high)
-		return
-
-	if not is_playing:
 		return
 
 	# Retry da gameover (Enter / R)
