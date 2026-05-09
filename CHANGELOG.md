@@ -2,6 +2,18 @@
 
 All notable changes to SPACE23 will be documented in this file.
 
+## [0.1.23] - 2026-05-09
+
+A round-5 cleanup pass: dead code, redundant per-frame work, sloppy patterns. No behavioral changes — purely health.
+
+### Removed
+- **`Player.max_speed` / `acceleration` / `friction`** instance vars. The comment claimed "Compat: alcuni accessi vengono ancora fatti via `player.max_speed`" but a repo-wide grep found zero call sites. Pure dead vars masquerading as a compatibility shim. The `MAX_SPEED` / `ACCELERATION` / `FRICTION` constants are used directly in `_process`.
+- **`AudioManager.set_pitch_scale(scale)` / `get_pitch_scale()`** wrappers. No callers anywhere — `Main.gd` reads and writes `audio_manager.audio_stream_player.pitch_scale` directly (in `_on_retry_pressed` and `_tick_gameover_fx`).
+- **`world_env.environment.glow_intensity = 1.8` per-frame assignment** in `Main._process`. The same value is set once in `_ready` and never changed elsewhere — the per-frame line was leftover from when glow was audio-modulated. Pure waste.
+
+### Changed
+- **`BackgroundRenderer.audio_mid` plumbing.** `update_background` was passing `audio_mid` to `_draw` via `set_meta("audio_mid", v)` + `get_meta` in `_draw` — using `Object`'s KV store for what is just a member variable. Replaced with `var last_audio_mid: float = 0.0`, written in `update_background`, read in `_draw`. Same pattern as the existing `last_audio_low`.
+
 ## [0.1.22] - 2026-05-09
 
 A "round 4" audit covering robustness, persistence, lifecycle, and edge cases not touched by the previous rounds (gameplay backbone, frontend).
