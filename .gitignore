@@ -15,3 +15,6 @@ export_presets.cfg
 
 # Local Claude Code settings (per-machine permissions/config — not portable)
 .claude/
+
+# Demo video: 6,9 MB, non referenziato dal sito
+demo.mp4
