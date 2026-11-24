@@ -14,8 +14,10 @@ const PLAYER_BULLET_SPEED: float = 1200.0
 const HOMING_TURN_RATE: float = 1.2
 const COL_ENEMY_PINK := Color(3.0, 0.2, 1.5)
 const CORE_ENEMY_PINK := Color(4.0, 1.0, 3.0)
+const TAIL_ENEMY_PINK := Color(2.0, 0.15, 1.0, 0.35)
 const COL_ENEMY_HOMING := Color(3.0, 1.0, 0.1)
 const CORE_ENEMY_HOMING := Color(4.0, 3.0, 1.0)
+const TAIL_ENEMY_HOMING := Color(3.0, 0.9, 0.1, 0.55)
 
 var player_bullets: Array = []
 var active_enemy_bullets: Array = []
@@ -74,6 +76,22 @@ func clear_enemy_bullets_with_fx() -> void:
 			explosion_system.spawn_ring(b.pos, Color(1.0, 0.5, 0.5), 24.0, 0.25)
 		pool_enemy_bullets.append(b)
 	active_enemy_bullets.clear()
+
+# Bullet Cancel (Cave/Crimzon style): cancella i proiettili nemici entro `radius`
+# (oppure tutto lo schermo se `radius <= 0`) con scintille oro campionate.
+func cancel_enemy_bullets_in_radius(center: Vector2, radius: float) -> int:
+	var cancelled: int = 0
+	var r_sq: float = radius * radius
+	var fx_budget: int = 20
+	for i in range(active_enemy_bullets.size() - 1, -1, -1):
+		var b: Dictionary = active_enemy_bullets[i]
+		if radius <= 0.0 or b.pos.distance_squared_to(center) <= r_sq:
+			if fx_budget > 0:
+				explosion_system.spawn_ring(b.pos, Color(2.5, 2.0, 0.4), 22.0, 0.22)
+				fx_budget -= 1
+			_remove_enemy_bullet_at(i)
+			cancelled += 1
+	return cancelled
 
 func clear_all() -> void:
 	player_bullets.clear()
@@ -171,6 +189,8 @@ func _tick_enemy_bullets(delta: float, gsm: float, black_holes: Array) -> void:
 	var hb_sq: float = hb * hb
 	var graze_sq: float = Main.GRAZE_RADIUS * Main.GRAZE_RADIUS
 	var iframed: bool = player.is_invincible or player.hit_iframe_timer > 0.0
+	var beat_dashing: bool = player.is_beat_dashing
+	const BEAT_CANCEL_SQ: float = 38.0 * 38.0
 	var max_y: float = screen_size.y + 100.0
 	var max_x: float = screen_size.x + 100.0
 
@@ -194,9 +214,14 @@ func _tick_enemy_bullets(delta: float, gsm: float, black_holes: Array) -> void:
 		# Movimento
 		b.pos += b.dir * (b.speed * move_dt)
 
-		# Player hit / graze (hoisted invariants)
+		# Player hit / Beat-Dash cancel / graze (hoisted invariants)
 		var dist_sq: float = b.pos.distance_squared_to(player_pos)
-		if dist_sq < hb_sq and not iframed:
+		if beat_dashing and dist_sq < BEAT_CANCEL_SQ:
+			var bd_pts: int = main.add_scaled_score(100)
+			explosion_system.spawn_ring(b.pos, Color(2.5, 2.0, 0.4), 22.0, 0.22)
+			main.spawn_floating_text(b.pos, "+%d" % bd_pts, Color(1.0, 0.9, 0.35), 10, 0.45)
+			_remove_enemy_bullet_at(i)
+		elif dist_sq < hb_sq and not iframed:
 			explosion_system.spawn(player_pos, Color(3.0, 0.2, 0.2), 0.5)
 			main.add_shake(10.0)
 			main.trigger_hit_stop(0.02)
@@ -205,12 +230,12 @@ func _tick_enemy_bullets(delta: float, gsm: float, black_holes: Array) -> void:
 			iframed = true
 		elif dist_sq < graze_sq and not b.grazed and not iframed:
 			b.grazed = true
-			main.register_graze()
+			var graze_pitch: float = main.register_graze()
 			var graze_pts: int = main.add_scaled_score(Main.SCORE_PER_GRAZE)
 			main.gain_flow(Main.FLOW_GAIN_PER_GRAZE)
 			main.spawn_floating_text(b.pos, "GRAZE +%d" % graze_pts, Color(0.6, 1.0, 1.0), 10, 0.55)
 			explosion_system.spawn(b.pos, Color(1.0, 1.0, 1.0, 0.5), 0.2)
-			audio_manager.play_sfx(3.0, -6.0, b.pos, "graze")
+			audio_manager.play_sfx(3.0, -6.0, b.pos, "graze", graze_pitch)
 		elif b.pos.y > max_y or b.pos.y < -100.0 or b.pos.x < -100.0 or b.pos.x > max_x:
 			_remove_enemy_bullet_at(i)
 
@@ -235,11 +260,13 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2(-2, -12), Vector2(4, 24)), b.color)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	# Enemy bullets (cerchio + core; colori const per zero allocazioni nel hot-path)
+	# Enemy bullets (scia direzionale + cerchio + core; colori const zero allocazioni)
 	for b in active_enemy_bullets:
 		if b.homing:
-			draw_circle(b.pos, 5.0, COL_ENEMY_HOMING)
-			draw_circle(b.pos, 2.0, CORE_ENEMY_HOMING)
+			draw_line(b.pos, b.pos - b.dir * 16.0, TAIL_ENEMY_HOMING, 3.2, true)
+			draw_circle(b.pos, 5.5, COL_ENEMY_HOMING)
+			draw_circle(b.pos, 2.2, CORE_ENEMY_HOMING)
 		else:
+			draw_line(b.pos, b.pos - b.dir * 8.0, TAIL_ENEMY_PINK, 2.0, true)
 			draw_circle(b.pos, 5.0, COL_ENEMY_PINK)
 			draw_circle(b.pos, 2.0, CORE_ENEMY_PINK)

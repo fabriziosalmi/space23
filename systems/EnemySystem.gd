@@ -325,7 +325,9 @@ func _ai_mothership(e: Dictionary, delta: float, gsm: float) -> void:
 		if phase2 and not e.get("phase2_triggered", false):
 			e.phase2_triggered = true
 			e.color = Color(2.6, 0.35, 0.8)  # shift cremisi-magenta in Fase 2
-			audio_manager.play_sfx(0.3, 8.0, e.pos)
+			audio_manager.play_sfx(0.3, 2.0, e.pos, "bomb")
+			if projectile_system:
+				projectile_system.cancel_enemy_bullets_in_radius(e.pos, -1.0)
 			if main:
 				main.add_shake(40.0)
 				main.spawn_floating_text(e.pos + Vector2(0, -40), "PHASE 2!", Color(1.0, 0.25, 0.35), 18, 1.2)
@@ -376,11 +378,23 @@ func _draw() -> void:
 		draw_set_transform(e.pos, 0.0, Vector2(beat_scale, beat_scale))
 		draw_colored_polygon(e.pts, fill)
 
-		# Edge glow ring: usa pts_loop precalcolato allo spawn (zero allocazioni).
+		# Wireframe neon vettoriale permanente (usa pts_loop già precalcolato, zero allocazioni).
 		if e.hit_flash > 0:
 			var glow: Color = e.color * 4.0
 			glow.a = e.hit_flash
 			draw_polyline(e.pts_loop, glow, 2.0 + 4.0 * e.hit_flash, true)
+		else:
+			var rim: Color = e.color * (1.55 + audio_low * 0.85)
+			rim.a = 0.72
+			draw_polyline(e.pts_loop, rim, 1.4, true)
+
+		# Halo energetico rotante sul Boss Mothership (più rapido/intenso in Fase 2).
+		if e.ai_type == Main.BOSS_TYPE_INDEX:
+			var p2: bool = e.get("phase2_triggered", false)
+			var spin: float = e.ai_timer * (3.6 if p2 else 1.6)
+			var halo_col: Color = Color(3.0, 0.4, 1.2, 0.75) if p2 else Color(2.4, 0.35, 0.35, 0.55)
+			draw_arc(Vector2.ZERO, 34.0 + audio_low * 6.0, spin, spin + PI * 1.35, 24, halo_col, 2.5, true)
+			draw_arc(Vector2.ZERO, 46.0 + audio_low * 9.0, -spin * 1.3, -spin * 1.3 + PI * 1.1, 24, Color(1.8, 0.8, 1.0, 0.4), 1.5, true)
 
 		draw_circle(Vector2.ZERO, 6.0, Color(2.5 + audio_low * 2.0, 0.5, 0.5))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -394,20 +408,21 @@ func _draw() -> void:
 			draw_rect(Rect2(bx, by, bw, 3.0), Color(0.05, 0.05, 0.08, 0.75))
 			draw_rect(Rect2(bx, by, bw * ratio, 3.0), Color(1.0 - ratio * 0.4, 0.25 + ratio * 0.75, 0.25, 0.9))
 
-	# Radar HUD: indicatori per nemici sopra il bordo superiore della camera
+	# Radar HUD color-coded: indicatori per nemici sopra il bordo superiore
 	if main and main.game_state != "TITLE" and is_instance_valid(main.main_camera):
 		var cam_tl: Vector2 = main.main_camera.position - screen_size / 2.0
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		for e in enemies:
 			if e.pos.y < cam_tl.y:
 				var indicator_x: float = clamp(e.pos.x, cam_tl.x + 20, cam_tl.x + screen_size.x - 20)
+				var is_boss: bool = e.ai_type == Main.BOSS_TYPE_INDEX
+				var w: float = 15.0 if is_boss else 10.0
+				var h: float = 20.0 if is_boss else 15.0
 				var pts := PackedVector2Array([
-					Vector2(indicator_x, cam_tl.y + 30),
-					Vector2(indicator_x - 10, cam_tl.y + 15),
-					Vector2(indicator_x + 10, cam_tl.y + 15)
+					Vector2(indicator_x, cam_tl.y + 15.0 + h),
+					Vector2(indicator_x - w, cam_tl.y + 15.0),
+					Vector2(indicator_x + w, cam_tl.y + 15.0)
 				])
-				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-				draw_polygon(pts, PackedColorArray([
-					Color(1.0, 0.0, 0.0, 0.8),
-					Color(1.0, 0.0, 0.0, 0.8),
-					Color(1.0, 0.0, 0.0, 0.8)
-				]))
+				var ec: Color = e.color
+				var rc := Color(clampf(ec.r, 0.25, 1.4), clampf(ec.g, 0.25, 1.4), clampf(ec.b, 0.25, 1.4), 0.85)
+				draw_colored_polygon(pts, rc)

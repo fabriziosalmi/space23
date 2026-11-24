@@ -7,6 +7,7 @@ signal retry_pressed
 signal bomb_pressed
 signal dash_pressed
 signal pause_toggle_requested
+signal sector_changed(idx: int)
 
 # HUD: split DIST + KILLS invece di SCORE unico (la distance dominava il totale).
 var dist_label: Label
@@ -27,7 +28,12 @@ var pause_label: Label
 var bomb_button: Button
 var dash_button: Button
 var mute_label: Label
+var autofire_label: Label
 var sector_label: Label
+var sector_selector: HBoxContainer
+var sector_info_label: Label
+var _playlist_bpms: Array = []
+var _selected_sector: int = 0
 var _sector_toast_t: float = 0.0
 var _hp_target: float = 100.0
 var _hp_fill_style: StyleBoxFlat
@@ -45,6 +51,7 @@ var retry_button: Button
 
 var highscores = []
 const SAVE_PATH = "user://space23_highscores.json"
+const PREFS_PATH = "user://space23_prefs.json"
 var current_final_score = 0
 var start_button: Button
 var boss_hp_bar: ProgressBar
@@ -139,6 +146,41 @@ func _ready():
 	leaderboard_label.add_theme_color_override("font_outline_color", Color(0.0, 0.2, 0.4))
 	leaderboard_label.add_theme_constant_override("outline_size", 6)
 	add_child(leaderboard_label)
+
+	# Selettore Settore sul Title (tra titolo e leaderboard): permette di
+	# partire da qualsiasi traccia (01..06, 130/145 BPM) con click o ←/→.
+	sector_selector = HBoxContainer.new()
+	sector_selector.alignment = BoxContainer.ALIGNMENT_CENTER
+	sector_selector.size = Vector2(460, 36)
+	sector_selector.position = Vector2(screen_size.x / 2.0 - 230, screen_size.y / 2.0 + 26)
+	var prev_btn := Button.new()
+	prev_btn.text = " < "
+	prev_btn.focus_mode = Control.FOCUS_NONE
+	prev_btn.add_theme_font_override("font", arcade_font)
+	prev_btn.add_theme_font_size_override("font_size", 14)
+	prev_btn.pressed.connect(func(): _step_sector(-1))
+	sector_selector.add_child(prev_btn)
+
+	sector_info_label = Label.new()
+	sector_info_label.text = "SECTOR 01  ·  130 BPM"
+	sector_info_label.custom_minimum_size = Vector2(310, 30)
+	sector_info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sector_info_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	sector_info_label.add_theme_font_override("font", arcade_font)
+	sector_info_label.add_theme_font_size_override("font_size", 13)
+	sector_info_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	sector_info_label.add_theme_color_override("font_outline_color", Color(0.25, 0.1, 0.0))
+	sector_info_label.add_theme_constant_override("outline_size", 5)
+	sector_selector.add_child(sector_info_label)
+
+	var next_btn := Button.new()
+	next_btn.text = " > "
+	next_btn.focus_mode = Control.FOCUS_NONE
+	next_btn.add_theme_font_override("font", arcade_font)
+	next_btn.add_theme_font_size_override("font_size", 14)
+	next_btn.pressed.connect(func(): _step_sector(1))
+	sector_selector.add_child(next_btn)
+	add_child(sector_selector)
 
 	# Control hints — sotto al leaderboard sul TITLE. Pre-fix il giocatore
 	# nuovo doveva indovinare le keybind o leggere il README. Hide insieme
@@ -248,6 +290,17 @@ func _ready():
 	mute_label.add_theme_constant_override("outline_size", 4)
 	mute_label.hide()
 	add_child(mute_label)
+
+	autofire_label = Label.new()
+	autofire_label.text = "AUTO [F]"
+	autofire_label.position = Vector2(screen_size.x - 150, 68)
+	autofire_label.add_theme_font_override("font", arcade_font)
+	autofire_label.add_theme_font_size_override("font_size", 11)
+	autofire_label.add_theme_color_override("font_color", Color(0.35, 1.0, 0.9, 0.85))
+	autofire_label.add_theme_color_override("font_outline_color", Color(0.0, 0.15, 0.25))
+	autofire_label.add_theme_constant_override("outline_size", 4)
+	autofire_label.hide()
+	add_child(autofire_label)
 
 	sector_label = Label.new()
 	sector_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -371,6 +424,8 @@ func _layout_for_size(s: Vector2) -> void:
 		version_label.size = Vector2(s.x - 14, 20)
 	if leaderboard_label:
 		leaderboard_label.position = Vector2(s.x / 2.0 - 200, s.y / 2.0 + 80)
+	if sector_selector:
+		sector_selector.position = Vector2(s.x / 2.0 - 230, s.y / 2.0 + 26)
 	if controls_label:
 		controls_label.size = Vector2(s.x - 40, 40)
 		controls_label.position = Vector2(20, s.y - 70)
@@ -380,6 +435,8 @@ func _layout_for_size(s: Vector2) -> void:
 		dash_button.position = Vector2(s.x - 224, s.y - 116)
 	if mute_label:
 		mute_label.position = Vector2(s.x - 150, 48)
+	if autofire_label:
+		autofire_label.position = Vector2(s.x - 150, 68)
 	if flow_label:
 		flow_label.position = Vector2(s.x - 260.0, 20.0)
 	if sector_label:
@@ -460,6 +517,50 @@ func _hide_play_ui() -> void:
 func set_mute_visible(muted: bool) -> void:
 	if mute_label:
 		mute_label.visible = muted
+
+func set_autofire_visible(active: bool) -> void:
+	if autofire_label:
+		autofire_label.visible = active
+
+func configure_sector_selector(playlist: Array, initial_idx: int) -> void:
+	_playlist_bpms.clear()
+	for t in playlist:
+		_playlist_bpms.append(int(t.get("bpm", 130)))
+	if _playlist_bpms.is_empty():
+		_playlist_bpms.append(130)
+	_selected_sector = clampi(initial_idx, 0, _playlist_bpms.size() - 1)
+	_refresh_sector_label()
+
+func _step_sector(delta_idx: int) -> void:
+	if _playlist_bpms.is_empty():
+		return
+	_selected_sector = posmod(_selected_sector + delta_idx, _playlist_bpms.size())
+	_refresh_sector_label()
+	sector_changed.emit(_selected_sector)
+
+func _refresh_sector_label() -> void:
+	if sector_info_label and not _playlist_bpms.is_empty():
+		sector_info_label.text = "SECTOR %02d  ·  %d BPM" % [_selected_sector + 1, int(_playlist_bpms[_selected_sector])]
+
+func get_top_highscore() -> int:
+	return int(highscores[0]["score"]) if not highscores.is_empty() else 0
+
+func load_prefs() -> Dictionary:
+	if not FileAccess.file_exists(PREFS_PATH):
+		return {}
+	var file := FileAccess.open(PREFS_PATH, FileAccess.READ)
+	if file == null:
+		return {}
+	var json := JSON.new()
+	if json.parse(file.get_as_text()) != OK:
+		return {}
+	var data = json.get_data()
+	return data if typeof(data) == TYPE_DICTIONARY else {}
+
+func save_prefs(prefs: Dictionary) -> void:
+	var file := FileAccess.open(PREFS_PATH, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(prefs))
 
 func show_sector_banner(sector_num: int, bpm: int) -> void:
 	if not sector_label:
@@ -553,11 +654,35 @@ const _TITLE_IGNORED_KEYS := [KEY_M, KEY_ALT, KEY_CTRL, KEY_META, KEY_SHIFT, KEY
 
 func _input(event):
 	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch or event is InputEventJoypadButton):
-		if event is InputEventKey and event.physical_keycode in _TITLE_IGNORED_KEYS:
-			return
+		# Cambio settore su Title con ←/→, A/D o D-pad senza avviare la partita.
+		if event is InputEventKey:
+			if event.physical_keycode in _TITLE_IGNORED_KEYS:
+				return
+			if event.physical_keycode == KEY_LEFT or event.physical_keycode == KEY_A:
+				if event.is_pressed() and not event.is_echo():
+					_step_sector(-1)
+				return
+			if event.physical_keycode == KEY_RIGHT or event.physical_keycode == KEY_D:
+				if event.is_pressed() and not event.is_echo():
+					_step_sector(1)
+				return
+		elif event is InputEventJoypadButton:
+			if event.button_index == JOY_BUTTON_DPAD_LEFT:
+				if event.pressed and not event.is_echo():
+					_step_sector(-1)
+				return
+			if event.button_index == JOY_BUTTON_DPAD_RIGHT:
+				if event.pressed and not event.is_echo():
+					_step_sector(1)
+				return
+		elif (event is InputEventMouseButton or event is InputEventScreenTouch) and sector_selector and sector_selector.visible:
+			if sector_selector.get_global_rect().has_point(event.position):
+				return
+
 		if not event.is_pressed() and not event.is_echo():
 			title_label.hide()
 			leaderboard_label.hide()
+			if sector_selector: sector_selector.hide()
 			if version_label: version_label.hide()
 			if controls_label: controls_label.hide()
 			_show_play_ui()

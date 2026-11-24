@@ -295,10 +295,16 @@ func _infer_sfx_kind(pitch: float, volume: float) -> String:
 		return "hit"
 	return "kill"
 
+func is_on_beat(tolerance_phase: float = 0.16) -> bool:
+	if not (audio_stream_player and audio_stream_player.playing):
+		return false
+	return beat_phase <= tolerance_phase or beat_phase >= (1.0 - tolerance_phase)
+
 # Riproduce un SFX sintetizzato dal bank PCM con pan stereo 2D.
 # `kind` opzionale: se omesso viene inferito da pitch/volume per piena
 # retrocompatibilità coi call-site esistenti.
-func play_sfx(pitch: float, volume: float = 0.0, pos: Vector2 = Vector2.INF, kind: String = ""):
+# `pitch_override` > 0 forza un pitch esatto (es. scala pentatonica su graze).
+func play_sfx(pitch: float, volume: float = 0.0, pos: Vector2 = Vector2.INF, kind: String = "", pitch_override: float = -1.0):
 	var key: String = kind if kind != "" and _sfx_bank.has(kind) else _infer_sfx_kind(pitch, volume)
 	var stream: AudioStreamWAV = _sfx_bank.get(key, null)
 	if stream == null:
@@ -308,8 +314,7 @@ func play_sfx(pitch: float, volume: float = 0.0, pos: Vector2 = Vector2.INF, kin
 		if sfx_timers[i] <= 0.0:
 			var p: AudioStreamPlayer2D = sfx_players[i]
 			p.stream = stream
-			# Piccolo micro-jitter di pitch (±4%) per evitare "machine-gun" robotico.
-			p.pitch_scale = randf_range(0.96, 1.04)
+			p.pitch_scale = pitch_override if pitch_override > 0.0 else randf_range(0.96, 1.04)
 			p.volume_db = clampf(volume, -18.0, 3.0)
 			if pos.x != INF and camera_ref != null:
 				p.global_position = pos

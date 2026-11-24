@@ -43,6 +43,7 @@ var flames: Array = []
 var flame_base_y: Array = []         # y locale di partenza di ogni fiamma (per bob delta)
 
 var is_dashing = false
+var is_beat_dashing: bool = false
 var dash_timer = 0.0
 var dash_cooldown = 0.0
 var dash_dir = Vector2.ZERO
@@ -133,7 +134,11 @@ func _ready():
 		elif dash_ready_flash > 0.0:
 			var k: float = dash_ready_flash / 0.18
 			hitbox_node.draw_arc(Vector2.ZERO, 22.0 + (1.0 - k) * 10.0, 0.0, TAU, 28, Color(0.5, 2.0, 2.5, k * 0.75), 2.0, true)
-		hitbox_node.draw_arc(Vector2.ZERO, HITBOX_RADIUS_BODY, 0.0, TAU, 24, Color(1.0, 0.1, 0.5, 0.18), 1.0, true)
+		# Micro-metronomo diegetico: battito sottilissimo sull'anello corpo sincronizzato alla cassa.
+		var beat_glow: float = 0.0
+		if main != null and main.audio_manager != null and main.audio_manager.audio_stream_player.playing:
+			beat_glow = pow(1.0 - main.audio_manager.beat_phase, 3.0)
+		hitbox_node.draw_arc(Vector2.ZERO, HITBOX_RADIUS_BODY + beat_glow * 2.2, 0.0, TAU, 24, Color(1.0, 0.25 + beat_glow * 0.55, 0.6, 0.12 + beat_glow * 0.24), 1.0 + beat_glow * 0.8, true)
 		hitbox_node.draw_circle(Vector2.ZERO, HITBOX_RADIUS_BULLET, Color(1.0, 0.1, 0.5, 0.8))
 		hitbox_node.draw_circle(Vector2.ZERO, 2.5, Color(1.0, 1.0, 1.0, 1.0))
 	)
@@ -170,22 +175,24 @@ func _on_trail_draw():
 			var alpha = 1.0 - (float(i) / trail_history.size())
 			trail_node.draw_line(pts[i], pts[i+1], Color(trail_r, trail_g, trail_b, alpha), trail_w * alpha)
 			
-	# Se stiamo dashando: scia centrale + 3 afterimage ghost della silhouette nave.
+	# Se stiamo dashando: scia centrale + 3 afterimage ghost (oro in BEAT DASH, cyan normale).
 	if is_dashing:
+		var dash_core_col: Color = Color(3.2, 2.5, 0.8) if is_beat_dashing else Color(3.0, 3.0, 3.0)
+		var ghost_rgb: Color = Color(2.8, 2.1, 0.5) if is_beat_dashing else Color(0.4, 1.8, 3.0)
 		var pts = PackedVector2Array()
 		for i in range(trail_history.size()):
 			var p = trail_history[i]
 			pts.append(p.pos - trail_node.global_position)
 		for i in range(pts.size() - 1):
 			var alpha = 1.0 - (float(i) / trail_history.size())
-			trail_node.draw_line(pts[i], pts[i+1], Color(3.0, 3.0, 3.0, alpha), 15.0 * alpha)
+			trail_node.draw_line(pts[i], pts[i+1], Color(dash_core_col.r, dash_core_col.g, dash_core_col.b, alpha), 15.0 * alpha)
 		var ghost_shape := PackedVector2Array([Vector2(0, -42), Vector2(-50, 14), Vector2(0, 22), Vector2(50, 14)])
 		for gi in [3, 7, 11]:
 			if gi < trail_history.size():
 				var gp = trail_history[gi]
 				var ga: float = 0.28 * (1.0 - float(gi) / 14.0)
 				trail_node.draw_set_transform(gp.pos - trail_node.global_position, gp.rot, Vector2.ONE)
-				trail_node.draw_colored_polygon(ghost_shape, Color(0.4, 1.8, 3.0, ga))
+				trail_node.draw_colored_polygon(ghost_shape, Color(ghost_rgb.r, ghost_rgb.g, ghost_rgb.b, ga))
 		trail_node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			
 	# Draw drones (in trail_node local space, anchored around the ship's global_position)
@@ -209,17 +216,28 @@ func _on_trail_draw():
 func trigger_hit_flash() -> void:
 	hit_flash_timer = HIT_FLASH_DURATION
 
+func _execute_dash(dir: Vector2) -> void:
+	is_dashing = true
+	dash_timer = DASH_DURATION
+	dash_cooldown = DASH_COOLDOWN
+	dash_dir = dir
+	is_beat_dashing = main != null and main.audio_manager != null and main.audio_manager.is_on_beat()
+	if is_beat_dashing:
+		main.gain_flow(0.15)
+		main.spawn_floating_text(position + Vector2(0, -24), "BEAT DASH!", Color(1.0, 0.85, 0.25), 13, 0.75)
+		if main.explosion_system:
+			main.explosion_system.spawn_ring(position, Color(2.5, 2.0, 0.4), 56.0, 0.28)
+		main.audio_manager.play_sfx(1.0, -1.0, position, "pickup", 1.25)
+	elif main and main.audio_manager:
+		main.audio_manager.play_sfx(1.0, -4.0, position, "dash")
+
 # Trigger Dash da bottone mobile/web: usa la direzione di movimento corrente
 # (o UP se la nave è ferma).
 func trigger_dash_from_ui() -> void:
 	if not can_move or is_dashing or dash_cooldown > 0.0:
 		return
-	is_dashing = true
-	dash_timer = DASH_DURATION
-	dash_cooldown = DASH_COOLDOWN
-	dash_dir = velocity.normalized() if velocity.length_squared() > 100.0 else Vector2.UP
-	if main and main.audio_manager:
-		main.audio_manager.play_sfx(1.0, -4.0, position, "dash")
+	var dir: Vector2 = velocity.normalized() if velocity.length_squared() > 100.0 else Vector2.UP
+	_execute_dash(dir)
 
 # SFX shoot: laser FM sintetizzato dal bank PCM.
 func _play_shoot_sfx() -> void:
@@ -510,6 +528,7 @@ func _process(delta):
 		velocity = dash_dir * (MAX_SPEED * DASH_SPEED_MULT)
 		if dash_timer <= 0:
 			is_dashing = false
+			is_beat_dashing = false
 	else:
 		# Mantieni magnitudine analogica <= 1.0 (così inclinazioni lievi dello
 		# stick o mouse vicino al target danno micro-dodge fluido).
@@ -523,12 +542,7 @@ func _process(delta):
 		# Consuma il Dash dal buffer: funziona anche da fermo (dash verso l'alto).
 		if can_move and dash_buffer_timer > 0.0 and dash_cooldown <= 0.0:
 			dash_buffer_timer = 0.0
-			is_dashing = true
-			dash_timer = DASH_DURATION
-			dash_cooldown = DASH_COOLDOWN
-			dash_dir = input_dir.normalized() if input_dir.length() > 0.1 else Vector2.UP
-			if main and main.audio_manager:
-				main.audio_manager.play_sfx(1.0, -4.0, position, "dash")
+			_execute_dash(input_dir.normalized() if input_dir.length() > 0.1 else Vector2.UP)
 		
 	position += velocity * delta
 	position.x = clamp(position.x, 80, screen_size.x - 80)
