@@ -1,13 +1,9 @@
-// SPACE23 — Nebula Background (audio-reactive on low/mid/high)
+// SPACE23 — Nebula Background v2 (Domain-Warped Hubble/JWST + Hyperspace Warp)
 //
-// - 5-octave FBM mixed onto two cloud bands.
-// - Bass (low): drives a *dramatic* pulsation of the violet clouds. Baseline
-//   keeps the universe non-black between beats; a multiplicative "kick" punches
-//   the clouds bright on each cassa.
-// - Mid: modulates a finer, faster sub-cloud (smaller octave) so the nebula
-//   has texture even in mid-only sections (intros without bass).
-// - High: drives a sparse star-field sparkle on top — micro flicker on hats /
-//   percussion.
+// - IQ-style domain-warped FBM + dark cosmic dust lanes for volumetric depth.
+// - Band-specific audio reactivity (low/mid/high) kept below bullet-hell contrast ceiling.
+// - Dynamic `warp_factor` stretches speed streaks and near stars during Drops & Overdrive.
+// - Per-sector `nebula_density` adapts cloud presence to each sector's theme.
 shader_type canvas_item;
 
 uniform vec3 c_bg = vec3(0.005, 0.0, 0.015);
@@ -17,13 +13,9 @@ uniform float scroll_time = 0.0;
 uniform float audio_low = 0.0;
 uniform float audio_mid = 0.0;
 uniform float audio_high = 0.0;
-// Lateral parallax: viewport_offset_x / screen_width passed by GDScript.
-// Multiplied by 0.05 (DEPTH_NEBULA) before being applied to sample UVs — the
-// nebula is the deepest layer, so the shift is barely perceptible (max ~1.2%
-// of UV at full player extension). Matches the position-keyed parallax of the
-// CPU layers and sprites; without this the nebula would feel locked to the
-// camera while everything in front slid past.
 uniform float lateral_offset = 0.0;
+uniform float warp_factor = 0.0;
+uniform float nebula_density = 1.0;
 
 vec2 random2(vec2 p) {
 	return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
@@ -39,57 +31,36 @@ float noise(vec2 p) {
 	               dot(random2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);
 }
 
-// 4 octaves (down from 5): ~25% cheaper per pixel on mobile/WebGL with nearly identical cloud detail.
-float fbm(vec2 p) {
+float fbm4(vec2 p) {
 	float f = 0.0;
 	float w = 0.5;
 	for (int i = 0; i < 4; i++) {
 		f += w * noise(p);
-		p *= 2.0;
+		p *= 2.02;
 		w *= 0.5;
 	}
 	return f;
 }
 
-// 3 octaves for high-frequency mid-driven sub-cloud (n3).
 float fbm3(vec2 p) {
 	float f = 0.0;
 	float w = 0.5;
 	for (int i = 0; i < 3; i++) {
 		f += w * noise(p);
-		p *= 2.0;
+		p *= 2.05;
 		w *= 0.5;
 	}
 	return f;
 }
 
-// Cheap hash for sparkle pixels
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
 	p += dot(p, p + 45.32);
 	return fract(p.x * p.y);
 }
 
-// Procedural starfield: layer di stelle su griglia, scrolla verticalmente in
-// modo perfettamente loopabile (modulo nelle UV), twinkla con sin sul time
-// usando una phase per-stella, ogni stella ha una tinta leggera variata.
-//
-// Args:
-//   uv          : UV già "scrollate" dal caller
-//   density     : celle/UV (più alto = più piccole + più dense)
-//   appear_thr  : soglia hash sopra cui la cella ha una stella (es 0.985 = ~1.5%)
-//   core_radius : dimensione "punto" stella nella cella
-//   twinkle_hz  : frequenza twinkle in cicli/sec
-vec3 starfield_layer(vec2 uv, float density, float appear_thr, float core_radius, float twinkle_hz) {
-	// Single-return path (WebGL 2 / GLSL ES 3 driver-safe: alcuni driver
-	// hanno problemi con early-return in fragment shader, soprattutto se
-	// seguiti da texture sampling). Visibility = step() · core, moltiplica
-	// invece di branchare.
-	// Row-stagger: shift alternate rows by half a cell on X. Senza questo
-	// la griglia axis-aligned produceva column-alignment visibile durante lo
-	// scroll verticale (le stelle nella stessa cell-column apparivano come
-	// linee verticali). Lo shift brick-pattern rompe l'alignment senza
-	// alterare la densità o la random-ness del placement.
+// Procedural starfield with brick-stagger anti-column alignment and warp elongation.
+vec3 starfield_layer(vec2 uv, float density, float appear_thr, float core_radius, float twinkle_hz, float stretch_y) {
 	vec2 grid = uv * density;
 	grid.x += step(1.0, mod(floor(grid.y), 2.0)) * 0.5;
 	vec2 cell = floor(grid);
@@ -98,124 +69,99 @@ vec3 starfield_layer(vec2 uv, float density, float appear_thr, float core_radius
 
 	vec2 cell_uv = fract(grid);
 	vec2 jitter = vec2(hash21(cell + 1.7), hash21(cell + 7.3)) * 0.7 + 0.15;
-	float d = length(cell_uv - jitter);
+	vec2 diff = cell_uv - jitter;
+	// Elongate star vertically during hyperspace warp (Drop / Overdrive).
+	diff.y /= (1.0 + stretch_y);
+	float d = length(diff);
 	float core = smoothstep(core_radius, 0.0, d);
 
-	// Twinkle per-stella (phase = h * 31.4). 0.45-1.0 amp così non spengono mai.
 	float phase = h * 31.4;
 	float twinkle = 0.45 + 0.55 * (0.5 + 0.5 * sin(scroll_time * twinkle_hz + phase));
 
-	// Tinta variata per stella: white / pale-blue / pale-yellow / pale-pink.
-	// La cascata if/else senza early-return è OK in qualsiasi GLSL.
 	float color_seed = hash21(cell + 13.7);
 	vec3 tint;
-	if      (color_seed < 0.55) tint = vec3(1.00, 0.98, 0.95);  // white-warm (most common)
-	else if (color_seed < 0.78) tint = vec3(0.85, 0.92, 1.00);  // pale blue
-	else if (color_seed < 0.93) tint = vec3(1.00, 0.95, 0.78);  // pale yellow
-	else                         tint = vec3(1.00, 0.82, 0.95); // pink
+	if      (color_seed < 0.52) tint = vec3(1.00, 0.98, 0.95);  // warm white
+	else if (color_seed < 0.76) tint = vec3(0.80, 0.91, 1.00);  // hot blue OB star
+	else if (color_seed < 0.92) tint = vec3(1.00, 0.93, 0.74);  // gold giant
+	else                         tint = vec3(1.00, 0.78, 0.92); // rose star
 
 	return tint * core * twinkle * visible;
 }
 
 void fragment() {
-	// Lateral shift applied uniformly to all sample UVs (clouds, starfields,
-	// streaks). Positive `lateral_offset` (player right of centre) → sample
-	// further right in the texture → cloud appears to drift left on screen,
-	// matching the parallax of layers in front.
 	float lat = lateral_offset * 0.05;
 
 	vec2 uv = UV;
-	// Direzione: `-= scroll_time` shifta il sample DOWN ⇒ pattern visibile
-	// si muove DOWN (illusione "ship moves forward"). Stessa correzione
-	// applicata anche a starfield/streak. Le explicit y-offsets nelle
-	// fbm() sotto sono state flippate per mantenere la differential drift
-	// inter-octave senza riportare le nuvole nella vecchia direzione UP.
-	uv.y -= scroll_time * 0.05;
+	uv.y -= scroll_time * 0.045;
 	uv.x += lat;
 
-	// Two main cloud octaves (bass-driven). Y-component delle additional
-	// time-offsets invertita rispetto alla vecchia versione: n1 add `-0.05`,
-	// n2 add `+0.03`, n3 add `+0.04` (era +0.05/-0.03/-0.04).
-	float n1 = fbm(uv * 3.0 + vec2(scroll_time * 0.02, -scroll_time * 0.05));
-	float n2 = fbm(uv * 6.0 + vec2(-scroll_time * 0.01, scroll_time * 0.03));
+	// --- DOMAIN-WARPED FBM (organic swirling cosmic gas) ---
+	vec2 q = vec2(
+		fbm3(uv * 2.4 + vec2(0.0, -scroll_time * 0.025)),
+		fbm3(uv * 2.4 + vec2(5.2, 1.3 + scroll_time * 0.018))
+	);
+	float n1 = fbm4(uv * 2.8 + q * 1.15 + vec2(scroll_time * 0.015, -scroll_time * 0.035));
+	float n2 = fbm3(uv * 5.8 - q * 0.75 + vec2(-scroll_time * 0.01, scroll_time * 0.025));
 
-	// Faster/finer sub-cloud (mid-driven, gives texture even in bass-less sections)
-	float n3 = fbm3(uv * 12.0 + vec2(scroll_time * 0.08, scroll_time * 0.04));
+	// Dark cosmic dust lanes: carved filaments that absorb background light,
+	// giving true 3D depth AND darker pockets so neon enemy bullets pop harder.
+	float dust = smoothstep(0.18, 0.62, fbm3(uv * 4.2 + q * 0.9 + vec2(2.7, -scroll_time * 0.02)));
 
 	vec3 color = c_bg;
-	color = mix(color, c_neb1, smoothstep(0.1, 0.8, n1));
-	color = mix(color, c_neb2, smoothstep(0.2, 0.9, n2));
+	float cloud1 = smoothstep(0.05, 0.78, n1) * nebula_density;
+	float cloud2 = smoothstep(0.15, 0.85, n2) * nebula_density;
+	color = mix(color, c_neb1, clamp(cloud1, 0.0, 1.0));
+	color = mix(color, c_neb2, clamp(cloud2 * 0.85, 0.0, 1.0));
 
-	// --- BASS — palette glow on c_neb1 + WARM RED tint band-specific ---
-	float bass_baseline = 2.0;
-	float bass_kick = audio_low * audio_low * 14.0;
-	color += c_neb1 * n1 * (bass_baseline + bass_kick);
-	color += c_neb2 * n2 * (bass_baseline * 0.5 + bass_kick * 0.10);
+	// Carve dark dust lanes into the base clouds
+	color *= mix(1.0, 0.42, dust * 0.75);
 
-	// Tinta WARM ROSSO/ARANCIO band-specific: ogni cassa "stinge" la nebula
-	// di rosso. Indipendente dal palette, così è SEMPRE riconoscibile come
-	// "questo è bass" anche su track con palette già viola.
-	color += vec3(0.9, 0.35, 0.15) * audio_low * audio_low * smoothstep(0.35, 0.85, n1) * 1.2;
+	// --- BASS — warm volumetric glow on warped filaments ---
+	float bass_baseline = 1.8;
+	float bass_kick = audio_low * audio_low * 13.0;
+	color += c_neb1 * max(n1, 0.0) * (bass_baseline + bass_kick) * nebula_density * (1.0 - dust * 0.55);
+	color += c_neb2 * max(n2, 0.0) * (bass_baseline * 0.45 + bass_kick * 0.12) * nebula_density;
+	color += vec3(0.85, 0.32, 0.14) * audio_low * audio_low * smoothstep(0.32, 0.82, n1) * 1.05 * nebula_density;
 
-	// --- MID — palette glow on c_neb2 + COOL CYAN/BLUE tint band-specific ---
-	float mid_glow = audio_mid * 2.5;
-	color += c_neb2 * n2 * mid_glow;
-	vec3 mid_tint_palette = mix(c_neb1, c_neb2, 0.7);
-	color += mid_tint_palette * n3 * (audio_mid * 2.5);
+	// --- MID — cool cyan filaments along warp ridges ---
+	float ridge = 1.0 - abs(n2);
+	float mid_glow = audio_mid * 2.2 * nebula_density;
+	color += c_neb2 * ridge * ridge * mid_glow * 0.55;
+	color += vec3(0.14, 0.52, 0.92) * audio_mid * smoothstep(0.38, 0.85, n2) * 0.75 * nebula_density;
 
-	// Tinta COOL CIANO band-specific: synth/pad alzano una nube blu
-	// indipendente dal palette. Distintiva rispetto al bass red.
-	color += vec3(0.15, 0.55, 0.95) * audio_mid * smoothstep(0.4, 0.85, n2) * 0.85;
-
-	// --- HIGH — sparkle + PINK/MAGENTA shimmer band-specific ---
+	// --- HIGH — fine stardust sparkle + magenta edge shimmer ---
 	float sparkle_seed = hash21(floor(uv * 400.0) + floor(scroll_time * 2.0));
 	float sparkle = step(1.0 - audio_high * 0.003, sparkle_seed);
-	color += vec3(1.0, 0.85, 1.15) * sparkle;
+	color += vec3(1.0, 0.88, 1.15) * sparkle;
+	color += vec3(0.90, 0.45, 1.0) * audio_high * smoothstep(0.62, 0.9, n2) * 0.6 * nebula_density;
 
-	// Shimmer ROSA/MAGENTA band-specific su hi-hats: tocco di pink sui peak
-	// del rumore, riconoscibile come "highs" indipendente dal palette.
-	color += vec3(0.95, 0.5, 1.0) * audio_high * smoothstep(0.65, 0.9, n2) * 0.7;
-
-	// --- STARFIELD — 2 layer procedurali in loop, twinkle per-stella ---
-	// Layer 1: stelle piccole frequenti (140 cells/UV, core 0.035, multiplier
-	// peak ~1.1). Layer 2: stelle "leggermente più grandi" più rare (era
-	// 75/0.05/×1.2 con peak 1.56 → bloom forte sui twinkle peak = "stelle
-	// troppo grandi" segnalate dall'utente). Adesso 55/0.04/×0.9 con peak
-	// ~1.17 → bloom solo sui peak veri, niente halo costanti. Inoltre
-	// appear_thr 0.992 → 0.994 (≈25% meno stelle layer 2) → cielo meno
-	// affollato + meno line pattern (bricks più spaziati).
-	// Direzione: `-= scroll_time` ⇒ in Godot canvas_item le UV.y crescono
-	// verso il basso, quindi sottrarre nel sample shifta il pattern visivo
-	// VERSO IL BASSO (illusione "ship moving forward"). Prima era += →
-	// stelle salivano verso l'alto, contraddicendo lo scroll dei pianeti
-	// e delle comete (che vanno giù).
+	// --- STARFIELD (2 layers; near layer elongates slightly with warp_factor) ---
 	vec2 star_uv1 = UV;
-	star_uv1.y -= scroll_time * 0.04;
+	star_uv1.y -= scroll_time * 0.038;
 	star_uv1.x += lat;
-	color += starfield_layer(star_uv1, 140.0, 0.985, 0.035, 3.5) * (0.7 + audio_mid * 0.4);
+	color += starfield_layer(star_uv1, 145.0, 0.985, 0.035, 3.5, warp_factor * 0.4) * (0.72 + audio_mid * 0.35);
 
 	vec2 star_uv2 = UV;
-	star_uv2.y -= scroll_time * 0.10;
-	star_uv2.x += lat;
-	color += starfield_layer(star_uv2, 55.0, 0.994, 0.04, 5.0) * 0.9 * (0.8 + audio_high * 0.5);
+	star_uv2.y -= scroll_time * 0.095;
+	star_uv2.x += lat * 1.4;
+	color += starfield_layer(star_uv2, 58.0, 0.993, 0.04, 5.0, warp_factor * 2.2) * 0.92 * (0.8 + audio_high * 0.45);
 
-	// --- SPEED STREAKS — sottili linee verticali "warp" che vendono velocità ---
-	// Pochissime, sottili, scrollano fast verso il basso, intensità modulata
-	// dal bass: kick → streak più visibili. "Quasi impercettibili" ma il
-	// cervello le legge come "stiamo viaggiando fast". (Stessa correzione
-	// di direzione delle starfield: `-=` per scrollare DOWN.)
+	// --- HYPERSPACE SPEED STREAKS (scale length & density with warp_factor) ---
 	vec2 streak_uv = UV;
-	streak_uv.y -= scroll_time * 0.18;
-	streak_uv.x += lat;
-	vec2 streak_cell = floor(streak_uv * vec2(160.0, 35.0));
+	streak_uv.y -= scroll_time * (0.18 + warp_factor * 0.22);
+	streak_uv.x += lat * 1.8;
+	vec2 streak_scale = vec2(160.0, mix(35.0, 14.0, warp_factor));
+	vec2 streak_cell = floor(streak_uv * streak_scale);
 	float streak_h = hash21(streak_cell + 5.7);
-	float streak_visible = step(0.992, streak_h);
-	vec2 streak_local = fract(streak_uv * vec2(160.0, 35.0));
+	float streak_thr = mix(0.992, 0.976, warp_factor);
+	float streak_visible = step(streak_thr, streak_h);
+	vec2 streak_local = fract(streak_uv * streak_scale);
 	float streak_jx = hash21(streak_cell + 11.3);
-	float streak_bar = smoothstep(0.05, 0.0, abs(streak_local.x - streak_jx));
-	float streak_vfade = smoothstep(0.0, 0.25, streak_local.y) * (1.0 - smoothstep(0.7, 1.0, streak_local.y));
-	float streak_intensity = (0.18 + audio_low * 0.45);
-	color += vec3(0.85, 0.9, 1.0) * streak_bar * streak_vfade * streak_intensity * streak_visible;
+	float streak_bar = smoothstep(0.055, 0.0, abs(streak_local.x - streak_jx));
+	float streak_vfade = smoothstep(0.0, 0.22, streak_local.y) * (1.0 - smoothstep(0.72, 1.0, streak_local.y));
+	float streak_intensity = (0.16 + audio_low * 0.40 + warp_factor * 0.55);
+	vec3 streak_col = mix(vec3(0.82, 0.90, 1.0), vec3(0.65, 0.95, 1.2), warp_factor);
+	color += streak_col * streak_bar * streak_vfade * streak_intensity * streak_visible;
 
 	COLOR = vec4(color, 1.0);
 }
