@@ -238,6 +238,8 @@ func _ready() -> void:
 	ui_manager.bomb_pressed.connect(_on_bomb_button_pressed)
 	ui_manager.dash_pressed.connect(func(): player.trigger_dash_from_ui())
 	ui_manager.pause_toggle_requested.connect(toggle_pause)
+	ui_manager.mute_toggle_requested.connect(toggle_mute)
+	ui_manager.restart_requested.connect(_on_retry_pressed)
 	ui_manager.sector_changed.connect(_on_sector_changed)
 
 	# --- POST-PROCESSING (CanvasLayer 100, sopra il mondo / sotto la UI) ---
@@ -526,6 +528,7 @@ func trigger_game_over() -> void:
 	game_over_timer = 0.0
 	player_hp = 0
 	player.can_move = false
+	player.reset_touch_state()
 	player.visible = false
 	add_shake(60.0)
 	_set_cursor_hidden(false)  # name input + retry button cliccabili
@@ -597,6 +600,7 @@ func _on_retry_pressed() -> void:
 	player.weapon_type = 0
 	player.drone_active = false
 	player.trail_history.clear()
+	player.reset_touch_state()
 	player.visible = true
 	player.can_move = true
 
@@ -660,6 +664,8 @@ func toggle_pause() -> void:
 	if game_state != "PLAYING" and game_state != "INTRO":
 		return
 	is_paused = not is_paused
+	if player:
+		player.reset_touch_state()
 	if audio_manager and audio_manager.audio_stream_player:
 		audio_manager.audio_stream_player.stream_paused = is_paused
 	if ui_manager:

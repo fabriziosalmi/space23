@@ -52,6 +52,12 @@ var dash_buffer_timer: float = 0.0
 var _rmb_held: bool = false
 var _mouse_steering: bool = false
 var _mouse_target: Vector2 = Vector2.ZERO
+# Vero multi-touch per mobile/tablet: tracciamo il touch_index dedicato al
+# relative drag (1.15x) così il pollice non copre mai la nave e l'altra mano
+# può premere DASH/BOMB senza interrompere la guida.
+const TOUCH_DRAG_SENSITIVITY: float = 1.15
+var _drag_touch_idx: int = -1
+var _touch_drag_delta: Vector2 = Vector2.ZERO
 var is_invincible = false
 
 # Post-damage invincibility frames: dopo aver preso danno, ~0.4s di immunità
@@ -215,6 +221,25 @@ func _on_trail_draw():
 # colpito. Visibile come bagliore bianco istantaneo (~80ms) sovrapposto al body.
 func trigger_hit_flash() -> void:
 	hit_flash_timer = HIT_FLASH_DURATION
+
+func reset_touch_state() -> void:
+	_drag_touch_idx = -1
+	_touch_drag_delta = Vector2.ZERO
+
+func _input(event: InputEvent) -> void:
+	if not can_move or (main != null and (main.is_paused or main.hit_stop_timer > 0.0)):
+		return
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			if _drag_touch_idx == -1:
+				var over_ui: bool = main != null and main.ui_manager != null and main.ui_manager.is_point_over_action_ui(event.position)
+				if not over_ui:
+					_drag_touch_idx = event.index
+		elif event.index == _drag_touch_idx:
+			_drag_touch_idx = -1
+	elif event is InputEventScreenDrag:
+		if event.index == _drag_touch_idx:
+			_touch_drag_delta += event.relative * TOUCH_DRAG_SENSITIVITY
 
 func _execute_dash(dir: Vector2) -> void:
 	is_dashing = true
@@ -444,25 +469,34 @@ func _process(delta):
 			main.spawn_drone_bullet(p2, drone_color)
 		
 	_mouse_steering = false
+	var touch_dragging: bool = _drag_touch_idx != -1
 	if can_move:
 		# Movimento unificato: WASD/Frecce/D-pad (digitale 1.0) + Left Stick (analogico graduato 360°).
 		input_dir = Input.get_vector("move_left", "move_right", "move_up", "move_down", 0.18)
 
 		var over_action_ui: bool = main != null and main.ui_manager != null and main.ui_manager.is_touching_action_ui()
-		var is_touching = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not over_action_ui
-		if is_touching:
-			# Compensa l'offset di shake della camera e clampa al playable rect.
-			var target_pos = get_global_mouse_position() - main.main_camera.offset
-			target_pos.x = clamp(target_pos.x, 80.0, screen_size.x - 80.0)
-			target_pos.y = clamp(target_pos.y, 80.0, screen_size.y - 80.0)
-			_mouse_steering = true
-			_mouse_target = target_pos
-			var delta_v: Vector2 = target_pos - position
-			var dist: float = delta_v.length()
-			# Ramp proporzionale (6..54 px): niente overshoot/jitter attorno al cursore.
-			if dist > 6.0:
-				var strength: float = clamp((dist - 6.0) / 48.0, 0.0, 1.0)
-				input_dir += (delta_v / dist) * strength
+		var is_mouse_active: bool = false
+		if touch_dragging:
+			# Relative drag 1:1 (zero latenza, nave mai coperta dal pollice).
+			if _touch_drag_delta.length_squared() > 0.01:
+				if not is_dashing:
+					position += _touch_drag_delta
+				# Deriva direzione per rollio/spinta visiva.
+				input_dir = (_touch_drag_delta / max(delta * MAX_SPEED, 1.0)).limit_length(1.0)
+				_touch_drag_delta = Vector2.ZERO
+		else:
+			is_mouse_active = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not over_action_ui and not (main != null and main.ui_manager != null and main.ui_manager.is_touch_device())
+			if is_mouse_active:
+				var target_pos = get_global_mouse_position() - main.main_camera.offset
+				target_pos.x = clamp(target_pos.x, 80.0, screen_size.x - 80.0)
+				target_pos.y = clamp(target_pos.y, 80.0, screen_size.y - 80.0)
+				_mouse_steering = true
+				_mouse_target = target_pos
+				var delta_v: Vector2 = target_pos - position
+				var dist: float = delta_v.length()
+				if dist > 6.0:
+					var strength: float = clamp((dist - 6.0) / 48.0, 0.0, 1.0)
+					input_dir += (delta_v / dist) * strength
 
 		# Dash input buffer (150ms): tastiera/joypad + Right-Click per mouse-only.
 		var rmb_now: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and not over_action_ui
@@ -472,7 +506,7 @@ func _process(delta):
 			dash_buffer_timer = DASH_INPUT_BUFFER
 
 		shoot_timer -= delta
-		if (Input.is_action_pressed("fire") or is_touching or auto_fire) and shoot_timer <= 0:
+		if (Input.is_action_pressed("fire") or is_mouse_active or touch_dragging or auto_fire) and shoot_timer <= 0:
 			var overdrive: bool = main != null and main.flow_state >= 1.0
 			if weapon_type == 1:
 				shoot_timer = SHOOT_RATE_RAILGUN
@@ -532,12 +566,15 @@ func _process(delta):
 	else:
 		# Mantieni magnitudine analogica <= 1.0 (così inclinazioni lievi dello
 		# stick o mouse vicino al target danno micro-dodge fluido).
-		if input_dir.length() > 1.0:
-			input_dir = input_dir.normalized()
-		if input_dir.length() > 0.01:
-			velocity = velocity.move_toward(input_dir * MAX_SPEED, ACCELERATION * delta)
+		if not touch_dragging:
+			if input_dir.length() > 1.0:
+				input_dir = input_dir.normalized()
+			if input_dir.length() > 0.01:
+				velocity = velocity.move_toward(input_dir * MAX_SPEED, ACCELERATION * delta)
+			else:
+				velocity = velocity.move_toward(Vector2.ZERO, FRICTION * delta)
 		else:
-			velocity = velocity.move_toward(Vector2.ZERO, FRICTION * delta)
+			velocity = Vector2.ZERO
 
 		# Consuma il Dash dal buffer: funziona anche da fermo (dash verso l'alto).
 		if can_move and dash_buffer_timer > 0.0 and dash_cooldown <= 0.0:
