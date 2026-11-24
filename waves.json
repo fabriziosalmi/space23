@@ -1,36 +1,33 @@
 {
   "waves": [
-    { "type": "v_shape",     "count": 5, "delay": 3.0, "min_distance": 0 },
-    { "type": "invaders",    "count": 6, "delay": 5.0, "min_distance": 0 },
-    { "type": "horizontal",  "count": 4, "delay": 4.0, "min_distance": 0 },
-    { "type": "tank_escort",             "delay": 5.0, "min_distance": 800 },
-    { "type": "double_tank",             "delay": 6.0, "min_distance": 1500 },
-    { "type": "spinner",                 "delay": 8.0, "min_distance": 3000 },
-
-    { "type": "horizontal",  "count": 4, "delay": 4.0, "min_distance": 1200,
-      "speed_mult": 1.4, "color_mod": [1.4, 0.7, 1.5] },
-    { "type": "v_shape",     "count": 5, "delay": 3.5, "min_distance": 2000,
+    { "type": "v_shape",     "count": 5, "delay": 3.4, "min_distance": 0 },
+    { "type": "invaders",    "count": 5, "delay": 5.0, "min_distance": 0 },
+    { "type": "horizontal",  "count": 4, "delay": 4.2, "min_distance": 0 },
+    { "type": "octopus_grid", "count": 6, "delay": 5.2, "min_distance": 1800 },
+    { "type": "tank_escort",             "delay": 5.5, "min_distance": 3200 },
+    { "type": "crab_line",    "count": 4, "delay": 5.5, "min_distance": 4500 },
+    { "type": "squid_swarm",  "count": 5, "delay": 4.5, "min_distance": 6000,
+      "speed_mult": 1.0 },
+    { "type": "double_tank",             "delay": 6.0, "min_distance": 8000 },
+    { "type": "horizontal",  "count": 4, "delay": 4.2, "min_distance": 9500,
+      "speed_mult": 1.25, "color_mod": [1.4, 0.7, 1.5] },
+    { "type": "mantis_dive",  "count": 5, "delay": 4.8, "min_distance": 11000 },
+    { "type": "v_shape",     "count": 5, "delay": 3.8, "min_distance": 13000,
       "density": 1.4, "color_mod": [0.7, 1.4, 1.0] },
-    { "type": "invaders",    "count": 5, "delay": 4.5, "min_distance": 2500,
-      "speed_mult": 1.5, "color_mod": [1.6, 1.2, 0.4] },
-
-    { "type": "octopus_grid", "count": 8, "delay": 5.0, "min_distance": 600 },
-    { "type": "crab_line",    "count": 4, "delay": 5.5, "min_distance": 1000 },
-    { "type": "squid_swarm",  "count": 6, "delay": 4.0, "min_distance": 1400,
-      "speed_mult": 1.1 },
-    { "type": "mantis_dive",  "count": 5, "delay": 4.5, "min_distance": 1800 },
-    { "type": "dread_pair",               "delay": 7.0, "min_distance": 2200 },
-    { "type": "sentinel_arc", "count": 5, "delay": 5.5, "min_distance": 2600 },
-
-    { "type": "octopus_grid", "count": 12, "delay": 5.5, "min_distance": 3500,
+    { "type": "dread_pair",               "delay": 7.0, "min_distance": 15000 },
+    { "type": "sentinel_arc", "count": 5, "delay": 5.5, "min_distance": 17000 },
+    { "type": "spinner",                 "delay": 8.0, "min_distance": 19000 },
+    { "type": "invaders",    "count": 5, "delay": 4.5, "min_distance": 21000,
+      "speed_mult": 1.35, "color_mod": [1.6, 1.2, 0.4] },
+    { "type": "octopus_grid", "count": 10, "delay": 5.5, "min_distance": 23000,
       "color_mod": [1.0, 1.4, 1.4] },
-    { "type": "squid_swarm",  "count": 9,  "delay": 4.0, "min_distance": 4000,
-      "speed_mult": 1.4, "color_mod": [1.5, 0.8, 1.5] }
+    { "type": "squid_swarm",  "count": 8,  "delay": 4.2, "min_distance": 26000,
+      "speed_mult": 1.25, "color_mod": [1.5, 0.8, 1.5] }
   ],
   "fillers": [
-    { "type": "v_shape",    "count": 3, "delay": 2.0 },
-    { "type": "horizontal", "count": 2, "delay": 1.8 },
-    { "type": "invaders",   "count": 4, "delay": 2.5 },
-    { "type": "squid_swarm", "count": 3, "delay": 2.0 }
+    { "type": "v_shape",    "count": 3, "delay": 2.4 },
+    { "type": "horizontal", "count": 2, "delay": 2.2 },
+    { "type": "invaders",   "count": 4, "delay": 2.8 },
+    { "type": "squid_swarm", "count": 3, "delay": 2.4 }
   ]
 }

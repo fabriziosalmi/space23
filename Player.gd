@@ -63,7 +63,7 @@ var is_invincible = false
 # Post-damage invincibility frames: dopo aver preso danno, ~0.4s di immunità
 # per evitare lo stacking di più bullet sullo stesso frame (un wall di proiettili
 # potrebbe altrimenti azzerare l'HP in un singolo tick a 60fps).
-const HIT_IFRAME_DURATION: float = 0.4
+const HIT_IFRAME_DURATION: float = 0.75
 var hit_iframe_timer: float = 0.0
 
 # Hit flash: brevissimo "lampo bianco" sul corpo all'impatto (≈80ms). Diverso

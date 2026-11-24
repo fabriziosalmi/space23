@@ -127,7 +127,7 @@ func spawn(type_idx: int, pos: Vector2, diff: float, speed_mult: float = 1.0, co
 		"hp": hp_value,
 		"max_hp": hp_value,
 		"base_hp": int(e_type.hp),
-		"speed": randf_range(e_type.speed[0], e_type.speed[1]) * diff * speed_mult,
+		"speed": randf_range(e_type.speed[0], e_type.speed[1]) * (1.0 + (diff - 1.0) * 0.45) * speed_mult,
 		"ai_type": e_type.ai,
 		"ai_timer": 0.0,
 		"ai_state": "ENTER",

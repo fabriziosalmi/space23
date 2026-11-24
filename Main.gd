@@ -14,8 +14,8 @@ const ENEMY_BULLET_POOL_SIZE: int = 2500
 
 # Combat / collisioni
 const PLAYER_BULLET_DAMAGE: int = 1
-const ENEMY_BODY_COLLISION_DAMAGE: float = 30.0
-const ENEMY_BULLET_DAMAGE: float = 15.0
+const ENEMY_BODY_COLLISION_DAMAGE: float = 20.0
+const ENEMY_BULLET_DAMAGE: float = 10.0
 # Player bullet vs enemy: AABB-padding (vedi EnemySystem._aabb_half_for_type).
 # La collision è "bullet center inside (enemy_AABB + padding)" — sostituisce
 # il precedente hit_radius=35 contro `e.pos` come punto, che era corretto per
@@ -33,7 +33,7 @@ const SCORE_PER_BOSS: int = 5000
 const SCORE_PER_GRAZE: int = 50
 
 # Powerup drop
-const POWERUP_DROP_CHANCE: float = 0.20
+const POWERUP_DROP_CHANCE: float = 0.24
 
 # Bomb
 const STARTING_BOMBS: int = 3
@@ -41,10 +41,10 @@ const MAX_BOMBS: int = 5
 const BOMB_SHAKE: float = 80.0
 const BOMB_ENEMY_DAMAGE: int = 50
 
-# Difficulty curve (sigmoidale: cresce ma satura a DIFF_MAX, evita ingiocabilità a 30k+).
-# diff(d) = 1 + (DIFF_MAX-1) * (1 - exp(-d / DIFF_DISTANCE_DIVISOR))
-const DIFF_DISTANCE_DIVISOR: float = 4000.0
-const DIFF_MAX: float = 4.0
+# Difficulty curve (sigmoidale distesa sui settori: a 26s ~1.27x, a 60s ~2.18x,
+# satura dolcemente a 3.0x dal Settore 3+ invece di esplodere in 35s).
+const DIFF_DISTANCE_DIVISOR: float = 18000.0
+const DIFF_MAX: float = 3.0
 
 # Boss
 const BOSS_SPAWN_BEFORE_TRACK_END: float = 30.0
@@ -738,7 +738,9 @@ func register_graze() -> float:
 
 func try_drop_powerup(pos: Vector2) -> void:
 	if randf() < POWERUP_DROP_CHANCE:
-		powerup_system.spawn(pos, randi() % 4)
+		# Smart heal bias: sotto 50 HP metà dei drop sono Medkit per permettere clutch.
+		var p_type: int = 0 if (player_hp < 50.0 and randf() < 0.5) else (randi() % 4)
+		powerup_system.spawn(pos, p_type)
 
 func handle_enemy_kill(e: Dictionary) -> void:
 	# Centralised kill FX + scoring. Called by every system that can bring an
