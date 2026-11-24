@@ -21,7 +21,7 @@ var explosion_system: ExplosionSystem
 
 func spawn(pos: Vector2) -> void:
 	railguns.append({ "pos": pos, "life": RAILGUN_LIFE })
-	audio_manager.play_sfx(0.2, 5.0, pos)
+	audio_manager.play_sfx(0.2, 2.0, pos, "railgun")
 	if main:
 		main.add_shake(15.0)
 

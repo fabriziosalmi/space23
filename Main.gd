@@ -93,6 +93,17 @@ var drop_event_triggered: bool = false  # one-shot per traccia
 var is_paused: bool = false
 var is_muted: bool = false
 
+# Run telemetry per Kill Chain, Overdrive e pagella finale arcade.
+const CHAIN_WINDOW: float = 3.0
+var kill_count: int = 0
+var graze_count: int = 0
+var boss_kills: int = 0
+var current_chain: int = 0
+var max_chain: int = 0
+var chain_timer: float = 0.0
+var max_sector: int = 1
+var _overdrive_announced: bool = false
+
 # Camera FX (trauma model, Squirrel Eiserloh GDC 2016).
 # `shake_intensity` resta come "trauma input" cumulativo (0..CAMERA_SHAKE_MAX), così
 # i call-site esistenti (add_shake) non cambiano. Internamente lo normalizziamo a
@@ -504,6 +515,14 @@ func _on_retry_pressed() -> void:
 	score_bonus_accum = 0.0
 	flow_state = 0.0
 	distance = 0.0
+	kill_count = 0
+	graze_count = 0
+	boss_kills = 0
+	current_chain = 0
+	max_chain = 0
+	chain_timer = 0.0
+	max_sector = 1
+	_overdrive_announced = false
 
 	wave_director.reset()
 
@@ -636,6 +655,19 @@ func toggle_mute() -> void:
 
 func gain_flow(amount: float) -> void:
 	flow_state = min(flow_state + amount, 1.0)
+	_check_overdrive_cue()
+
+func _check_overdrive_cue() -> void:
+	if flow_state >= 1.0 and not _overdrive_announced:
+		_overdrive_announced = true
+		if is_instance_valid(player):
+			spawn_floating_text(player.position + Vector2(0, -34), "OVERDRIVE! 4x", Color(1.0, 0.85, 0.25), 16, 1.1)
+			audio_manager.play_sfx(2.5, 1.0, player.position, "pickup")
+	elif flow_state < 0.85:
+		_overdrive_announced = false
+
+func register_graze() -> void:
+	graze_count += 1
 
 func try_drop_powerup(pos: Vector2) -> void:
 	if randf() < POWERUP_DROP_CHANCE:
@@ -654,13 +686,19 @@ func handle_enemy_kill(e: Dictionary) -> void:
 	# Boss kill is the dramatic finish (super explosion, lens warp, +5000
 	# score). Normal kill gets hit-stop bracketed by base_hp so a "scout-class"
 	# kill stays scout-class even at diff 4.
+	kill_count += 1
+	current_chain += 1
+	if current_chain > max_chain:
+		max_chain = current_chain
+	chain_timer = CHAIN_WINDOW
 	if e.ai_type == BOSS_TYPE_INDEX:
+		boss_kills += 1
 		if is_instance_valid(ui_manager):
 			ui_manager.update_boss_hp(0, 100)
 		var boss_pts: int = add_scaled_score(SCORE_PER_BOSS + SCORE_PER_KILL)
 		spawn_floating_text(e.pos, "BOSS +%d" % boss_pts, Color(1.0, 0.85, 0.2), 18, 1.3)
 		explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 3.0, true)
-		audio_manager.play_sfx(0.2, 10.0, e.pos)  # boss kill: pan dalla pos del boss
+		audio_manager.play_sfx(0.2, 3.0, e.pos, "bomb")  # boss kill: pan dalla pos del boss
 		add_shake(100.0)
 		trigger_hit_stop(1.2)
 		trigger_boss_lens(e.pos)
@@ -668,6 +706,7 @@ func handle_enemy_kill(e: Dictionary) -> void:
 		var pts: int = add_scaled_score(SCORE_PER_KILL)
 		spawn_floating_text(e.pos, "+%d" % pts, Color(1.0, 1.0, 0.35), 11, 0.65)
 		explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 1.0)
+		audio_manager.play_sfx(0.8, -6.0, e.pos, "kill")
 		# Hit-stop bracket su base_hp (pre-difficulty), così uno scout resta
 		# scout-class anche a diff 4. Buckets calibrati sui base_hp dei tipi:
 		# 2-4 (scout/squid)=0.02; 5-10 (fighter/crab/octopus/mantis/sentinel)=0.04;
@@ -699,7 +738,12 @@ func damage_player(amount: float) -> void:
 	if player.hit_iframe_timer > 0.0:
 		return
 	player_hp -= amount
+	if flow_state >= 0.5 and is_instance_valid(player):
+		spawn_floating_text(player.position + Vector2(0, -28), "FLOW BREAK!", Color(1.0, 0.25, 0.3), 14, 0.9)
 	flow_state = 0.0
+	_overdrive_announced = false
+	current_chain = 0
+	chain_timer = 0.0
 	# I-frame post-damage: blocca lo stacking di più bullet sullo stesso frame
 	# (il check `not player.is_invincible` nei collision detector vedrà true
 	# dal prossimo proiettile in poi finché il timer non scade).
@@ -979,7 +1023,7 @@ func _process(delta: float) -> void:
 	# Distance + HUD (DIST + KILLS separati così il punteggio kill non viene
 	# sommerso dalla distance dopo 1 minuto di gioco).
 	distance += BASE_SCROLL_SPEED * global_speed_multiplier * delta
-	ui_manager.update_hud(player_hp, int(distance), score_points, flow_state, player_bombs, player.railgun_timer, player.drone_timer, player.dash_cooldown)
+	ui_manager.update_hud(player_hp, int(distance), score_points, flow_state, player_bombs, player.railgun_timer, player.drone_timer, player.dash_cooldown, current_chain)
 
 # ============================================================
 # SUB-STATE TICKS
@@ -1018,6 +1062,7 @@ func _tick_track_transition(delta: float) -> void:
 		audio_manager.is_transitioning = false
 		audio_manager.current_track_idx = (audio_manager.current_track_idx + 1) % audio_manager.playlist.size()
 		audio_manager.load_and_play_track(audio_manager.current_track_idx)
+		max_sector = max(max_sector, audio_manager.current_track_idx + 1)
 		if is_instance_valid(ui_manager):
 			ui_manager.show_sector_banner(audio_manager.current_track_idx + 1, int(audio_manager.get_current_bpm()))
 		# Slate wipe: pulizia dello stato gameplay residuo dalla traccia
@@ -1087,9 +1132,15 @@ func _tick_playing(delta: float) -> void:
 	# Score bonus via float accumulator (vedi commento su `score_bonus_accum`):
 	# l'int truncation di `15 * delta * (1 - y_ratio)` era sempre 0 — flush
 	# l'integer part dall'accumulatore appena raggiunge 1.
+	if chain_timer > 0.0:
+		chain_timer -= delta
+		if chain_timer <= 0.0:
+			current_chain = 0
+
 	var player_y_ratio: float = player.position.y / screen_size.y
 	if player_y_ratio < FLOW_TOP_HALF_THRESHOLD:
 		flow_state = min(flow_state + delta * FLOW_GAIN_PER_SEC, 1.0)
+		_check_overdrive_cue()
 		score_bonus_accum += 15.0 * delta * (1.0 - player_y_ratio)
 		if score_bonus_accum >= 1.0:
 			var integer_part: int = int(score_bonus_accum)
@@ -1097,6 +1148,7 @@ func _tick_playing(delta: float) -> void:
 			score_bonus_accum -= integer_part
 	else:
 		flow_state = max(flow_state - delta * FLOW_DECAY_PER_SEC, 0.0)
+		_check_overdrive_cue()
 
 	# Parallasse camera (segue dolcemente il player sull'asse X)
 	var target_cam_x: float = (screen_size.x / 2.0) + (player.position.x - (screen_size.x / 2.0)) * 0.15
@@ -1113,7 +1165,13 @@ func _tick_gameover_fx(delta: float) -> void:
 	post_fx.set_grayscale(lerp(post_fx.get_grayscale(), 1.0, 1.5 * delta))
 
 	if game_over_timer > 3.0 and not ui_manager.game_over_container.visible:
-		ui_manager.show_game_over(int(distance), score_points)
+		ui_manager.show_game_over(int(distance), score_points, {
+			"kills": kill_count,
+			"grazes": graze_count,
+			"max_chain": max_chain,
+			"bosses": boss_kills,
+			"sector": max_sector,
+		})
 
 func _check_boss_spawn() -> void:
 	if not audio_manager.audio_stream_player.stream:
