@@ -507,6 +507,8 @@ func _on_start_pressed() -> void:
 	_reset_run_telemetry()
 	audio_manager.load_and_play_track(selected_sector)
 	_apply_track_palette(selected_sector)
+	if bg_renderer:
+		bg_renderer.set_sector(selected_sector)
 	if is_instance_valid(ui_manager):
 		ui_manager.show_sector_banner(selected_sector + 1, int(audio_manager.get_current_bpm()))
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
@@ -613,6 +615,7 @@ func _on_retry_pressed() -> void:
 	if floating_text: floating_text.clear()
 	if bg_renderer:
 		bg_renderer.clear_landmarks()
+		bg_renderer.set_sector(selected_sector)
 
 	game_state = "PLAYING"
 	game_over_timer = 0.0
@@ -1011,7 +1014,9 @@ func _process(delta: float) -> void:
 		explosion_system.tick(delta)
 		if floating_text: floating_text.tick(delta)
 		_update_post_fx()
-		bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.position.x)
+		var bg_warp: float = clampf((global_speed_multiplier - 1.0) / 3.0 + flow_state * 0.25, 0.0, 1.0)
+	var bg_fade: float = clampf(audio_manager.transition_timer / 2.5, 0.0, 1.0) if audio_manager.is_transitioning else 1.0
+	bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.position.x, bg_warp, bg_fade)
 		return
 	elif is_intro:
 		_tick_intro(delta)
@@ -1097,7 +1102,9 @@ func _process(delta: float) -> void:
 	# Passiamo player.position.x: il BackgroundRenderer calcola un viewport
 	# offset position-keyed (smoothato + clampato) e ogni layer shifta in base
 	# al proprio depth factor → parallasse vero (non più velocity-driven).
-	bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.position.x)
+	var bg_warp: float = clampf((global_speed_multiplier - 1.0) / 3.0 + flow_state * 0.25, 0.0, 1.0)
+	var bg_fade: float = clampf(audio_manager.transition_timer / 2.5, 0.0, 1.0) if audio_manager.is_transitioning else 1.0
+	bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.position.x, bg_warp, bg_fade)
 
 	# Distance + HUD (DIST + KILLS separati così il punteggio kill non viene
 	# sommerso dalla distance dopo 1 minuto di gioco).
@@ -1151,6 +1158,8 @@ func _tick_track_transition(delta: float) -> void:
 		_last_drop_countdown = 0
 		audio_manager.current_track_idx = (audio_manager.current_track_idx + 1) % audio_manager.playlist.size()
 		audio_manager.load_and_play_track(audio_manager.current_track_idx)
+		if bg_renderer:
+			bg_renderer.set_sector(audio_manager.current_track_idx)
 		max_sector = max(max_sector, audio_manager.current_track_idx + 1)
 		if is_instance_valid(ui_manager):
 			ui_manager.show_sector_banner(audio_manager.current_track_idx + 1, int(audio_manager.get_current_bpm()))

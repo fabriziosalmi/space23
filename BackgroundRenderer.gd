@@ -99,6 +99,49 @@ const DEEP_CONFIGS := {
 	}
 }
 
+# 6 Settori curati (mappati 1:1 alle 6 tracce di AudioManager.playlist).
+# Ogni settore ha propria densità nebulosa, direzione luce 3D per i pianeti,
+# e una lista curata di pianeti/deep landmarks così ogni traccia vive in una
+# regione distinta dello spazio.
+const SECTOR_THEMES := [
+	{ # 0: Solar System Sweep (viola/blu, 130 BPM)
+		"nebula_density": 0.90,
+		"light_dir": Vector2(-0.72, -0.52),
+		"planets": [2, 5, 4, 0], # Earth, Saturn, Jupiter, Mercury
+		"deeps": ["galaxy", "cluster"],
+	},
+	{ # 1: Crimson Nebula Dive (rosso/arancio, 130 BPM)
+		"nebula_density": 1.35,
+		"light_dir": Vector2(0.82, -0.35),
+		"planets": [3, 1, 4, 5], # Mars, Venus, Jupiter, Saturn
+		"deeps": ["nebula", "galaxy"],
+	},
+	{ # 2: Emerald Outer Belt (verde industrial, 130 BPM)
+		"nebula_density": 1.05,
+		"light_dir": Vector2(-0.35, -0.88),
+		"planets": [6, 7, 5, 2], # Uranus, Neptune, Saturn, Earth
+		"deeps": ["cluster", "nebula"],
+	},
+	{ # 3: Deep Ring Abyss (ciano profondo, 145 BPM)
+		"nebula_density": 0.72,
+		"light_dir": Vector2(0.65, -0.62),
+		"planets": [7, 6, 0, 2], # Neptune, Uranus, Mercury, Earth
+		"deeps": ["nebula", "blackhole"],
+	},
+	{ # 4: Amber Cluster Pass (ambra/coral, 145 BPM)
+		"nebula_density": 1.18,
+		"light_dir": Vector2(-0.85, 0.25),
+		"planets": [4, 5, 1, 3], # Jupiter, Saturn, Venus, Mars
+		"deeps": ["cluster", "galaxy"],
+	},
+	{ # 5: Event Horizon (magenta/violet, 145 BPM)
+		"nebula_density": 1.25,
+		"light_dir": Vector2(0.22, -0.94),
+		"planets": [0, 7, 5, 3], # Mercury, Neptune, Saturn, Mars
+		"deeps": ["blackhole", "galaxy", "nebula"],
+	},
+]
+
 var layer_deep = []
 var layer_mid = []
 var layer_near = []
@@ -112,10 +155,14 @@ var planet_sequence: int = 0
 var planet_distance_accum: float = PLANET_INTERVAL_PX * 0.85  # seed: first one entro ~5s di gioco
 var current_palette_tint: Vector3 = Vector3(0.5, 0.3, 0.8)
 var last_audio_low: float = 0.0
-# Cached audio_mid per il passaggio da update_background → _draw. Prima il
-# valore veniva passato via `set_meta("audio_mid", ...) / get_meta(...)` —
-# pattern sloppy che usava il KV-store di Object per un membro normale.
 var last_audio_mid: float = 0.0
+var last_warp_factor: float = 0.0
+var last_transition_fade: float = 1.0
+var current_sector: int = 0
+var current_nebula_density: float = 0.90
+var target_nebula_density: float = 0.90
+var current_light_dir: Vector2 = Vector2(-0.72, -0.52)
+var target_light_dir: Vector2 = Vector2(-0.72, -0.52)
 
 var deep_layer: Node2D
 var deep_textures: Dictionary = {}
@@ -206,6 +253,15 @@ func _ready():
 		deep_distance_accum[kind] = float(cfg["interval_px"]) * initial_frac
 
 	_init_layers()
+
+func set_sector(idx: int) -> void:
+	current_sector = posmod(idx, SECTOR_THEMES.size())
+	var theme: Dictionary = SECTOR_THEMES[current_sector]
+	target_nebula_density = float(theme["nebula_density"])
+	target_light_dir = theme["light_dir"]
+	planet_sequence = 0
+	# Seed generoso così il landmark iconico del nuovo settore entra presto.
+	planet_distance_accum = PLANET_INTERVAL_PX * 0.82
 
 # Pulizia dei landmark (pianeti + galassie/nebulose/blackhole/cluster) — chiamata
 # da Main al retry così non sopravvivono dal run morto. I layer procedurali
@@ -298,15 +354,16 @@ func _init_layers():
 			"brightness": randf_range(0.40, 0.75)
 		})
 		
-	# 4. LAYER TOP (Planets, Asteroids, Comets)
-	for i in range(2):
+	# 4. LAYER TOP (Foreground dust motes, Asteroids, Comets — rimossi i vecchi
+	# pianeti draw_circle che stonavano con le foto NASA reali)
+	for i in range(18):
 		layer_top.append({
-			"type": "planet",
-			"strip_x": randf_range(-200, strip_width + 200), "pos": Vector2(0.0, randf() * screen_size.y),
-			"speed": randf_range(30.0, 50.0),
-			"radius": randf_range(30.0, 60.0),
-			"color": Color(randf_range(0.1, 0.3), randf_range(0.1, 0.3), randf_range(0.2, 0.4), 0.7),
-			"ring": randf() > 0.5
+			"type": "dust",
+			"strip_x": randf_range(-100, strip_width + 100),
+			"pos": Vector2(0.0, randf() * screen_size.y),
+			"speed": randf_range(160.0, 340.0),
+			"size": randf_range(1.0, 2.2),
+			"alpha": randf_range(0.18, 0.48),
 		})
 	for i in range(2):
 		var num_ast = randi() % 5 + 3
@@ -358,23 +415,20 @@ func _on_viewport_resized() -> void:
 		nebula_bg.size = screen_size + Vector2(400, 400)
 		nebula_bg.position = Vector2(-200, -200)
 
-func update_background(delta: float, global_speed_multiplier: float, c_bg: Color, c_neb1: Color, c_neb2: Color, audio_low: float, audio_mid: float, audio_high: float = 0.0, player_x: float = -1.0):
+func update_background(delta: float, global_speed_multiplier: float, c_bg: Color, c_neb1: Color, c_neb2: Color, audio_low: float, audio_mid: float, audio_high: float = 0.0, player_x: float = -1.0, warp_factor: float = 0.0, transition_fade: float = 1.0):
 	# Cassa = boost momentaneo dello scroll. Pulsa con la traccia.
 	var effective_speed: float = global_speed_multiplier + audio_low * KICK_PARALLAX_BOOST
+	last_warp_factor = lerpf(last_warp_factor, clampf(warp_factor, 0.0, 1.0), min(1.0, 5.0 * delta))
+	last_transition_fade = clampf(transition_fade, 0.0, 1.0)
+	current_nebula_density = lerpf(current_nebula_density, target_nebula_density, min(1.0, 1.2 * delta))
+	current_light_dir = current_light_dir.lerp(target_light_dir, min(1.0, 1.2 * delta))
 
 	# Lateral camera: smoothed track of player offset from viewport centre.
-	# Clamped so DEPTH_FOREGROUND * |offset| ≤ strip_pad — the strongest-parallax
-	# layer never exposes the strip's hard edges. `player_x = -1` is the sentinel
-	# for "no player" (TITLE state) → strip-centred, no lateral motion.
 	var target_offset: float = 0.0
 	if player_x >= 0.0:
 		target_offset = clamp(player_x - screen_size.x * 0.5, -max_player_offset, max_player_offset)
 	viewport_offset_x = lerp(viewport_offset_x, target_offset, LATERAL_LERP_RATE * delta)
 
-	# Floor "respiro" sul bass: raise minimo a ~0.15–0.25 per dare un kick
-	# baseline anche nei silenzi assoluti, ma SOTTO i picchi reali dell'audio
-	# (che spesso > 0.4 con il gain × 4 corrente). Il shader ha bass_baseline=2.5
-	# che è la luce sempre-on; il floor qui aggiunge solo una pulsazione lenta.
 	var ambient_pulse: float = 0.20 + 0.08 * sin(Time.get_ticks_msec() / 1000.0 * 0.7)
 	var shader_audio_low: float = max(audio_low, ambient_pulse)
 
@@ -387,10 +441,9 @@ func update_background(delta: float, global_speed_multiplier: float, c_bg: Color
 		nebula_bg.material.set_shader_parameter("c_bg", Vector3(c_bg.r, c_bg.g, c_bg.b))
 		nebula_bg.material.set_shader_parameter("c_neb1", Vector3(c_neb1.r, c_neb1.g, c_neb1.b))
 		nebula_bg.material.set_shader_parameter("c_neb2", Vector3(c_neb2.r, c_neb2.g, c_neb2.b))
-		# Normalised lateral offset for the shader's UV shift. The shader
-		# multiplies by DEPTH_NEBULA internally → cloud / starfield drift
-		# barely perceptibly when the player leans laterally.
 		nebula_bg.material.set_shader_parameter("lateral_offset", viewport_offset_x / screen_size.x)
+		nebula_bg.material.set_shader_parameter("warp_factor", last_warp_factor)
+		nebula_bg.material.set_shader_parameter("nebula_density", current_nebula_density)
 
 	# Planet landmarks: drive their tint from the current palette and let them
 	# pulse on the bass. Per il pacing/scroll usiamo un floor disaccoppiato dal
@@ -512,15 +565,20 @@ func _tick_planets(delta: float, effective_speed: float) -> void:
 		if sp.material:
 			sp.material.set_shader_parameter("tint", current_palette_tint)
 			sp.material.set_shader_parameter("audio_low", last_audio_low)
+			sp.material.set_shader_parameter("light_dir", current_light_dir)
+
+		# Smooth vertical edge fade + track transition fade (niente pop-in/out).
+		var base_a: float = float(sp.get_meta("base_alpha", 0.34))
+		var edge_a: float = clampf((sp.position.y + 420.0) / 260.0, 0.0, 1.0) * clampf((screen_size.y + 450.0 - sp.position.y) / 260.0, 0.0, 1.0)
+		sp.modulate.a = base_a * edge_a * last_transition_fade
 
 		if sp.position.y > screen_size.y + 450:
 			sp.queue_free()
 
 func _tick_deep_landmarks(delta: float, effective_speed: float) -> void:
-	# Per-kind distance accumulators → independent pacing. Anche qui guard di
-	# esclusività: se c'è già una landmark in viewport (planet o deep), questo
-	# spawn viene posticipato. Cap dell'accumulator a interval per evitare burst.
-	for kind in DEEP_CONFIGS:
+	# Spawna preferibilmente i deep landmarks del settore corrente.
+	var allowed_deeps: Array = SECTOR_THEMES[current_sector]["deeps"]
+	for kind in allowed_deeps:
 		deep_distance_accum[kind] += effective_speed * REFERENCE_SCROLL_SPEED * delta
 		var interval: float = float(DEEP_CONFIGS[kind]["interval_px"])
 		if deep_distance_accum[kind] >= interval:
@@ -530,9 +588,6 @@ func _tick_deep_landmarks(delta: float, effective_speed: float) -> void:
 				deep_distance_accum[kind] -= interval
 				_spawn_deep_landmark(kind)
 
-	# Update active deep landmarks: scroll, strip-space drift, per-frame shader
-	# uniforms. X recomputed every frame from `strip_x` anchor at DEPTH_DEEP
-	# (0.20) — gentle lateral parallax, deep landmarks read as far away.
 	for child in deep_layer.get_children():
 		var sp := child as Sprite2D
 		if sp == null:
@@ -547,6 +602,9 @@ func _tick_deep_landmarks(delta: float, effective_speed: float) -> void:
 		if sp.material:
 			sp.material.set_shader_parameter("tint", current_palette_tint)
 			sp.material.set_shader_parameter("audio_low", last_audio_low)
+		var base_a: float = float(sp.get_meta("base_alpha", 0.30))
+		var edge_a: float = clampf((sp.position.y + 520.0) / 280.0, 0.0, 1.0) * clampf((screen_size.y + 500.0 - sp.position.y) / 280.0, 0.0, 1.0)
+		sp.modulate.a = base_a * edge_a * last_transition_fade
 		if sp.position.y > screen_size.y + 500:
 			sp.queue_free()
 
@@ -579,8 +637,10 @@ func _spawn_deep_landmark(kind: String) -> void:
 	var rx_strip: float = randf_range(margin, strip_width - margin)
 	var ry: float = -randf_range(450, 600)
 	sp.set_meta("strip_x", rx_strip)
+	sp.set_meta("base_alpha", float(cfg["modulate"].a))
 	sp.position = Vector2(_strip_to_screen_x(rx_strip, DEPTH_DEEP), ry)
 	sp.modulate = cfg["modulate"]
+	sp.modulate.a = 0.0
 	sp.rotation = randf_range(-0.4, 0.4)  # slight tilt — these are not "facing camera"
 
 	var mat := ShaderMaterial.new()
@@ -589,6 +649,7 @@ func _spawn_deep_landmark(kind: String) -> void:
 	mat.set_shader_parameter("audio_low", last_audio_low)
 	mat.set_shader_parameter("tint_strength", float(cfg["tint_strength"]))
 	mat.set_shader_parameter("rim_strength", float(cfg["rim_strength"]))
+	mat.set_shader_parameter("is_planet", 0.0)
 	sp.material = mat
 
 	sp.set_meta("scroll_speed", float(cfg["scroll_base"]) * randf_range(0.8, 1.25))
@@ -598,7 +659,8 @@ func _spawn_deep_landmark(kind: String) -> void:
 func _spawn_planet() -> void:
 	if planet_textures.is_empty():
 		return
-	var idx: int = planet_sequence % planet_textures.size()
+	var sector_planets: Array = SECTOR_THEMES[current_sector]["planets"]
+	var idx: int = int(sector_planets[planet_sequence % sector_planets.size()]) % planet_textures.size()
 	planet_sequence += 1
 	var tex = planet_textures[idx]
 	if tex == null:
@@ -645,15 +707,16 @@ func _spawn_planet() -> void:
 	var x_drift: float = randf_range(-12.0, 12.0)
 
 	sp.set_meta("strip_x", rx_strip)
+	sp.set_meta("base_alpha", 0.36)
 	sp.position = Vector2(_strip_to_screen_x(rx_strip, DEPTH_PLANET), ry)
-	# Modulate quasi-bianco con leggera tinta perla; alpha 0.32 (-15% del giro
-	# precedente): planet ancora più "fondale".
-	sp.modulate = Color(0.92, 0.91, 0.96, 0.32)
+	sp.modulate = Color(0.94, 0.93, 0.98, 0.0)
 
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://shaders/planet.gdshader")
 	mat.set_shader_parameter("tint", current_palette_tint)
 	mat.set_shader_parameter("audio_low", last_audio_low)
+	mat.set_shader_parameter("light_dir", current_light_dir)
+	mat.set_shader_parameter("is_planet", 1.0)
 	sp.material = mat
 
 	sp.set_meta("scroll_speed", PLANET_SCROLL_SPEED * randf_range(0.85, 1.2))
@@ -705,21 +768,10 @@ func _draw():
 
 	# 4. DRAW LAYER TOP
 	for e in layer_top:
-		if e.type == "planet":
-			if e.ring:
-				draw_set_transform(e.pos, 0.3, Vector2(1.0, 0.3))
-				for r in range(3):
-					draw_arc(Vector2.ZERO, e.radius * 1.5 + r*2, PI, PI*2, 16, Color(1, 1, 1, 0.3), 1.5)
-				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-				
-			draw_circle(e.pos, e.radius, e.color)
-			draw_circle(e.pos + Vector2(e.radius*0.25, e.radius*0.25), e.radius*0.8, Color(0, 0, 0, 0.6))
-			
-			if e.ring:
-				draw_set_transform(e.pos, 0.3, Vector2(1.0, 0.3))
-				for r in range(3):
-					draw_arc(Vector2.ZERO, e.radius * 1.5 + r*2, 0, PI, 16, Color(1, 1, 1, 0.3), 1.5)
-				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if e.type == "dust":
+			var stretch: float = 2.0 + last_warp_factor * 20.0
+			var da: float = e.alpha * (0.7 + last_warp_factor * 0.5) * last_transition_fade
+			draw_line(e.pos, e.pos - Vector2(0.0, stretch), Color(0.85, 0.92, 1.0, da), e.size)
 				
 		elif e.type == "asteroid_group":
 			var ast_col := Color(0.2, 0.2, 0.2, 0.8)
