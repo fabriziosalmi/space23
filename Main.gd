@@ -1014,9 +1014,7 @@ func _process(delta: float) -> void:
 		explosion_system.tick(delta)
 		if floating_text: floating_text.tick(delta)
 		_update_post_fx()
-		var bg_warp: float = clampf((global_speed_multiplier - 1.0) / 3.0 + flow_state * 0.25, 0.0, 1.0)
-	var bg_fade: float = clampf(audio_manager.transition_timer / 2.5, 0.0, 1.0) if audio_manager.is_transitioning else 1.0
-	bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.position.x, bg_warp, bg_fade)
+		bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.position.x, 0.0, 1.0)
 		return
 	elif is_intro:
 		_tick_intro(delta)
