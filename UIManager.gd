@@ -7,6 +7,8 @@ signal retry_pressed
 signal bomb_pressed
 signal dash_pressed
 signal pause_toggle_requested
+signal mute_toggle_requested
+signal restart_requested
 signal sector_changed(idx: int)
 
 # HUD: split DIST + KILLS invece di SCORE unico (la distance dominava il totale).
@@ -23,10 +25,15 @@ var buffs_label: Label
 # Pause overlay
 var pause_dim: ColorRect
 var pause_label: Label
+var pause_restart_button: Button
 
-# Mobile BOMB / DASH buttons + Mute badge
+# Mobile / Touch action & utility buttons + badges
 var bomb_button: Button
 var dash_button: Button
+var pause_button: Button
+var mute_button: Button
+var _is_touch_ui: bool = false
+var _play_ui_visible: bool = false
 var mute_label: Label
 var autofire_label: Label
 var sector_label: Label
@@ -77,6 +84,7 @@ var _bomb_pulse_t: float = 0.0
 func _ready():
 	arcade_font = preload("res://PressStart2P.ttf")
 	layer = 101
+	_is_touch_ui = DisplayServer.is_touchscreen_available() or OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
 	var screen_size = get_viewport().get_visible_rect().size
 
 	dist_label = _make_hud_label(Vector2(20, 20), Color(0.4, 1.0, 0.6), Color(0.0, 0.2, 0.1))
@@ -189,7 +197,7 @@ func _ready():
 	controls_label.size = Vector2(screen_size.x - 40, 40)
 	controls_label.position = Vector2(20, screen_size.y - 70)
 	controls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	controls_label.text = "WASD/STICK MOVE  •  SPACE/Z/RT FIRE  •  SHIFT/C/RMB/LT DASH  •  X/MMB BOMB  •  F AUTO  •  M MUTE"
+	_refresh_controls_hint()
 	controls_label.add_theme_font_override("font", arcade_font)
 	controls_label.add_theme_font_size_override("font_size", 11)
 	controls_label.add_theme_color_override("font_color", Color(0.8, 0.95, 1.0, 0.7))
@@ -255,30 +263,56 @@ func _ready():
 	boss_hp_bar.hide()
 	add_child(boss_hp_bar)
 
-	# --- MOBILE BOMB + DASH BUTTONS (visibili solo su touch / web) ---
+	# --- TOUCH ACTION + UTILITY BUTTONS (visibili solo su touchscreen) ---
 	bomb_button = Button.new()
 	bomb_button.text = "BOMB"
+	bomb_button.focus_mode = Control.FOCUS_NONE
 	bomb_button.size = Vector2(96, 96)
-	bomb_button.position = Vector2(screen_size.x - 116, screen_size.y - 116)
+	bomb_button.position = Vector2(screen_size.x - 120, screen_size.y - 124)
 	bomb_button.add_theme_font_override("font", arcade_font)
-	bomb_button.add_theme_font_size_override("font_size", 18)
+	bomb_button.add_theme_font_size_override("font_size", 16)
 	bomb_button.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
-	bomb_button.modulate = Color(1.0, 1.0, 1.0, 0.85)
+	bomb_button.modulate = Color(1.0, 1.0, 1.0, 0.72)
 	bomb_button.pressed.connect(func(): bomb_pressed.emit())
 	bomb_button.hide()
 	add_child(bomb_button)
 
 	dash_button = Button.new()
 	dash_button.text = "DASH"
+	dash_button.focus_mode = Control.FOCUS_NONE
 	dash_button.size = Vector2(96, 96)
-	dash_button.position = Vector2(screen_size.x - 224, screen_size.y - 116)
+	dash_button.position = Vector2(screen_size.x - 232, screen_size.y - 124)
 	dash_button.add_theme_font_override("font", arcade_font)
-	dash_button.add_theme_font_size_override("font_size", 18)
+	dash_button.add_theme_font_size_override("font_size", 16)
 	dash_button.add_theme_color_override("font_color", Color(0.3, 1.0, 1.0))
-	dash_button.modulate = Color(1.0, 1.0, 1.0, 0.85)
+	dash_button.modulate = Color(1.0, 1.0, 1.0, 0.72)
 	dash_button.pressed.connect(func(): dash_pressed.emit())
 	dash_button.hide()
 	add_child(dash_button)
+
+	pause_button = Button.new()
+	pause_button.text = "||"
+	pause_button.focus_mode = Control.FOCUS_NONE
+	pause_button.size = Vector2(46, 36)
+	pause_button.position = Vector2(screen_size.x - 62, 54)
+	pause_button.add_theme_font_override("font", arcade_font)
+	pause_button.add_theme_font_size_override("font_size", 12)
+	pause_button.modulate = Color(1.0, 1.0, 1.0, 0.72)
+	pause_button.pressed.connect(func(): pause_toggle_requested.emit())
+	pause_button.hide()
+	add_child(pause_button)
+
+	mute_button = Button.new()
+	mute_button.text = "SFX"
+	mute_button.focus_mode = Control.FOCUS_NONE
+	mute_button.size = Vector2(56, 36)
+	mute_button.position = Vector2(screen_size.x - 124, 54)
+	mute_button.add_theme_font_override("font", arcade_font)
+	mute_button.add_theme_font_size_override("font_size", 10)
+	mute_button.modulate = Color(1.0, 1.0, 1.0, 0.72)
+	mute_button.pressed.connect(func(): mute_toggle_requested.emit())
+	mute_button.hide()
+	add_child(mute_button)
 
 	mute_label = Label.new()
 	mute_label.text = "MUTED [M]"
@@ -394,6 +428,18 @@ func _ready():
 	pause_label.hide()
 	add_child(pause_label)
 
+	pause_restart_button = Button.new()
+	pause_restart_button.text = "R E S T A R T"
+	pause_restart_button.focus_mode = Control.FOCUS_NONE
+	pause_restart_button.size = Vector2(260, 48)
+	pause_restart_button.position = Vector2(screen_size.x / 2.0 - 130, screen_size.y / 2.0 + 90)
+	pause_restart_button.add_theme_font_override("font", arcade_font)
+	pause_restart_button.add_theme_font_size_override("font_size", 16)
+	pause_restart_button.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	pause_restart_button.pressed.connect(func(): restart_requested.emit())
+	pause_restart_button.hide()
+	add_child(pause_restart_button)
+
 	load_highscores()
 
 	# Resize handler: Window/viewport resize → ricomputiamo le posizioni
@@ -430,9 +476,15 @@ func _layout_for_size(s: Vector2) -> void:
 		controls_label.size = Vector2(s.x - 40, 40)
 		controls_label.position = Vector2(20, s.y - 70)
 	if bomb_button:
-		bomb_button.position = Vector2(s.x - 116, s.y - 116)
+		bomb_button.position = Vector2(s.x - 120, s.y - 124)
 	if dash_button:
-		dash_button.position = Vector2(s.x - 224, s.y - 116)
+		dash_button.position = Vector2(s.x - 232, s.y - 124)
+	if pause_button:
+		pause_button.position = Vector2(s.x - 62, 54)
+	if mute_button:
+		mute_button.position = Vector2(s.x - 124, 54)
+	if pause_restart_button:
+		pause_restart_button.position = Vector2(s.x / 2.0 - 130, s.y / 2.0 + 90)
 	if mute_label:
 		mute_label.position = Vector2(s.x - 150, 48)
 	if autofire_label:
@@ -485,19 +537,35 @@ func _apply_neon_progressbar_theme(pb: ProgressBar, bar_color: Color, edge_color
 	if pb == hp_bar:
 		_hp_fill_style = fill
 
+func _refresh_controls_hint() -> void:
+	if not controls_label:
+		return
+	if _is_touch_ui:
+		controls_label.text = "DRAG ANYWHERE TO MOVE & FIRE  •  TAP DASH / BOMB  •  TAP < > FOR SECTOR"
+	else:
+		controls_label.text = "WASD/STICK MOVE  •  SPACE/Z/RT FIRE  •  SHIFT/C/RMB/LT DASH  •  X/MMB BOMB  •  F AUTO  •  M MUTE"
+
+func is_touch_device() -> bool:
+	return _is_touch_ui
+
+func _set_touch_buttons_visible(show_btns: bool) -> void:
+	for btn in [bomb_button, dash_button, pause_button, mute_button]:
+		if btn:
+			btn.visible = show_btns
+
 # Mostra/nasconde il cluster di HUD in-game (chiamato da _input title-hide e hide_game_over).
 func _show_play_ui() -> void:
+	_play_ui_visible = true
 	dist_label.show()
 	kill_label.show()
 	hp_bar.show()
 	flow_label.show()
 	bomb_label.show()
 	if buffs_label: buffs_label.show()
-	if OS.has_feature("mobile") or OS.has_feature("web"):
-		bomb_button.show()
-		dash_button.show()
+	_set_touch_buttons_visible(_is_touch_ui)
 
 func _hide_play_ui() -> void:
+	_play_ui_visible = false
 	dist_label.hide()
 	kill_label.hide()
 	hp_bar.hide()
@@ -510,13 +578,13 @@ func _hide_play_ui() -> void:
 	if sector_label:
 		_sector_toast_t = 0.0
 		sector_label.hide()
-	if OS.has_feature("mobile") or OS.has_feature("web"):
-		bomb_button.hide()
-		dash_button.hide()
+	_set_touch_buttons_visible(false)
 
 func set_mute_visible(muted: bool) -> void:
 	if mute_label:
 		mute_label.visible = muted
+	if mute_button:
+		mute_button.text = "OFF" if muted else "SFX"
 
 func set_autofire_visible(active: bool) -> void:
 	if autofire_label:
@@ -573,10 +641,16 @@ func show_sector_banner(sector_num: int, bpm: int) -> void:
 func is_entering_name() -> bool:
 	return name_input != null and name_input.visible
 
+func is_point_over_action_ui(pt: Vector2) -> bool:
+	for btn in [bomb_button, dash_button, pause_button, mute_button]:
+		if btn != null and btn.visible and btn.get_global_rect().has_point(pt):
+			return true
+	return false
+
 func is_touching_action_ui() -> bool:
 	var vp := get_viewport()
 	var mpos: Vector2 = vp.get_mouse_position() if vp != null else Vector2(-9999, -9999)
-	for btn in [bomb_button, dash_button]:
+	for btn in [bomb_button, dash_button, pause_button, mute_button]:
 		if btn != null and btn.visible:
 			if btn.is_pressed() or btn.get_global_rect().has_point(mpos):
 				return true
@@ -585,6 +659,8 @@ func is_touching_action_ui() -> bool:
 func set_pause_visible(visible_state: bool) -> void:
 	pause_dim.visible = visible_state
 	pause_label.visible = visible_state
+	if pause_restart_button:
+		pause_restart_button.visible = visible_state
 
 func _on_pause_overlay_input(event: InputEvent) -> void:
 	# Click / tap sull'overlay = richiesta unpause.
@@ -653,6 +729,14 @@ func _process(delta):
 const _TITLE_IGNORED_KEYS := [KEY_M, KEY_ALT, KEY_CTRL, KEY_META, KEY_SHIFT, KEY_CAPSLOCK, KEY_TAB]
 
 func _input(event):
+	# Fallback runtime: se arriva un tocco reale (es. iPadOS Safari in desktop
+	# mode o laptop touch), attiva subito i controlli touch e aggiorna gli hint.
+	if event is InputEventScreenTouch and not _is_touch_ui:
+		_is_touch_ui = true
+		_refresh_controls_hint()
+		if _play_ui_visible:
+			_set_touch_buttons_visible(true)
+
 	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch or event is InputEventJoypadButton):
 		# Cambio settore su Title con ←/→, A/D o D-pad senza avviare la partita.
 		if event is InputEventKey:
@@ -821,9 +905,9 @@ func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, 
 		bomb_label.text = "BOMBS: " + str(bombs)
 
 	if bomb_button and bomb_button.visible:
-		bomb_button.modulate.a = 0.85 if bombs > 0 else 0.25
+		bomb_button.modulate.a = 0.72 if bombs > 0 else 0.22
 	if dash_button and dash_button.visible:
-		dash_button.modulate.a = 0.85 if dash_cd <= 0.0 else 0.35
+		dash_button.modulate.a = 0.72 if dash_cd <= 0.0 else 0.28
 
 	_buff_expiring = (railgun_t > 0.0 and railgun_t < 2.5) or (drone_t > 0.0 and drone_t < 2.5)
 	if buffs_label:
