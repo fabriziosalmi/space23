@@ -4,9 +4,19 @@ class_name ExplosionSystem
 # Particelle "frantumi" + onde d'urto. Self-contained: nessuna dipendenza,
 # altri sistemi chiamano semplicemente spawn().
 
+const MAX_EXPLOSIONS: int = 80
+
 var explosions: Array = []
 
 func spawn(pos: Vector2, color: Color, scale_mod: float, is_super: bool = false) -> void:
+	if explosions.size() >= MAX_EXPLOSIONS:
+		if not is_super:
+			return
+		# Super-explosions (boss kill / bomb / death) always get through: evict oldest non-super.
+		for k in range(explosions.size()):
+			if not explosions[k].is_super:
+				explosions.remove_at(k)
+				break
 	var ex: Dictionary = {
 		"pos": pos,
 		"color": color,
@@ -46,6 +56,8 @@ func spawn(pos: Vector2, color: Color, scale_mod: float, is_super: bool = false)
 # vuoti, niente codice di rendering nuovo. Vita più corta (0.4s vs 0.4-1.5s)
 # e radius target esplicito così l'animazione finisce dove vogliamo.
 func spawn_ring(pos: Vector2, color: Color, max_radius: float, life: float = 0.4) -> void:
+	if explosions.size() >= MAX_EXPLOSIONS:
+		return
 	explosions.append({
 		"pos": pos,
 		"color": color,
@@ -60,9 +72,10 @@ func tick(delta: float) -> void:
 	for i in range(explosions.size() - 1, -1, -1):
 		var ex: Dictionary = explosions[i]
 		ex.life -= delta
+		var drag: float = pow(0.92, delta * 60.0)
 		for j in range(ex.shards.size()):
 			ex.shards[j].pos += ex.shards[j].vel * delta
-			ex.shards[j].vel *= 0.92
+			ex.shards[j].vel *= drag
 			ex.shards[j].rot += ex.shards[j].rot_speed * delta
 		for j in range(ex.shockwaves.size()):
 			ex.shockwaves[j].radius += ex.shockwaves[j].speed * delta

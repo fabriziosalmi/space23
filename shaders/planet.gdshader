@@ -13,6 +13,12 @@ uniform float audio_low = 0.0;
 // Rim glow intensity at the silhouette.
 uniform float rim_strength = 0.55;
 
+varying vec4 v_modulate;
+
+void vertex() {
+	v_modulate = COLOR;
+}
+
 void fragment() {
 	vec4 tex = texture(TEXTURE, UV);
 
@@ -34,6 +40,6 @@ void fragment() {
 		// Audio-reactive subtle pulse on the bass kick.
 		col *= 1.0 + audio_low * 0.18;
 
-		COLOR = vec4(col, tex.a);
+		COLOR = vec4(col * v_modulate.rgb, tex.a * v_modulate.a);
 	}
 }

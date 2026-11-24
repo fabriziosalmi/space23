@@ -39,10 +39,23 @@ float noise(vec2 p) {
 	               dot(random2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);
 }
 
+// 4 octaves (down from 5): ~25% cheaper per pixel on mobile/WebGL with nearly identical cloud detail.
 float fbm(vec2 p) {
 	float f = 0.0;
 	float w = 0.5;
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < 4; i++) {
+		f += w * noise(p);
+		p *= 2.0;
+		w *= 0.5;
+	}
+	return f;
+}
+
+// 3 octaves for high-frequency mid-driven sub-cloud (n3).
+float fbm3(vec2 p) {
+	float f = 0.0;
+	float w = 0.5;
+	for (int i = 0; i < 3; i++) {
 		f += w * noise(p);
 		p *= 2.0;
 		w *= 0.5;
@@ -127,7 +140,7 @@ void fragment() {
 	float n2 = fbm(uv * 6.0 + vec2(-scroll_time * 0.01, scroll_time * 0.03));
 
 	// Faster/finer sub-cloud (mid-driven, gives texture even in bass-less sections)
-	float n3 = fbm(uv * 12.0 + vec2(scroll_time * 0.08, scroll_time * 0.04));
+	float n3 = fbm3(uv * 12.0 + vec2(scroll_time * 0.08, scroll_time * 0.04));
 
 	vec3 color = c_bg;
 	color = mix(color, c_neb1, smoothstep(0.1, 0.8, n1));

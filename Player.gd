@@ -60,6 +60,11 @@ var hit_iframe_timer: float = 0.0
 const HIT_FLASH_DURATION: float = 0.08
 var hit_flash_timer: float = 0.0
 
+# Diegetic feedback: breve muzzle flash ai cannoni + ring flash quando Dash torna pronto.
+var muzzle_flash_timer: float = 0.0
+var dash_ready_flash: float = 0.0
+var _was_dash_cooling: bool = false
+
 var weapon_type = 0 # 0=normal, 1=railgun
 var drone_active = false
 var drone_angle = 0.0
@@ -107,10 +112,22 @@ func _ready():
 	ship_renderer.draw.connect(_on_ship_draw)
 	add_child(ship_renderer)
 
-	# --- HITBOX CORE VISUALIZER ---
-	# Mostra entrambe le hitbox: anello largo = collisione corpo nemico, dot = bullet
+	# --- HITBOX CORE VISUALIZER + DIEGETIC TELEMETRY ---
+	# Mostra hitbox (anello corpo + dot bullet), arco cooldown Dash, flash
+	# "Dash pronto" e aura rossa pulsante sotto il 25% HP — tutto dove il
+	# giocatore tiene già gli occhi.
 	var hitbox_node = Node2D.new()
 	hitbox_node.draw.connect(func():
+		var hp_low_warn: bool = main != null and main.player_hp > 0.0 and main.player_hp < Main.HEARTBEAT_HP_THRESHOLD
+		if hp_low_warn:
+			var warn_a: float = 0.22 + 0.25 * abs(sin(time_passed * 10.0))
+			hitbox_node.draw_arc(Vector2.ZERO, HITBOX_RADIUS_BODY + 4.0, 0.0, TAU, 28, Color(1.6, 0.15, 0.2, warn_a), 1.8, true)
+		if dash_cooldown > 0.0:
+			var frac: float = clamp(1.0 - (dash_cooldown / DASH_COOLDOWN), 0.0, 1.0)
+			hitbox_node.draw_arc(Vector2.ZERO, 22.0, -PI / 2.0, -PI / 2.0 + TAU * frac, 28, Color(0.3, 1.4, 2.0, 0.45), 1.6, true)
+		elif dash_ready_flash > 0.0:
+			var k: float = dash_ready_flash / 0.18
+			hitbox_node.draw_arc(Vector2.ZERO, 22.0 + (1.0 - k) * 10.0, 0.0, TAU, 28, Color(0.5, 2.0, 2.5, k * 0.75), 2.0, true)
 		hitbox_node.draw_arc(Vector2.ZERO, HITBOX_RADIUS_BODY, 0.0, TAU, 24, Color(1.0, 0.1, 0.5, 0.18), 1.0, true)
 		hitbox_node.draw_circle(Vector2.ZERO, HITBOX_RADIUS_BULLET, Color(1.0, 0.1, 0.5, 0.8))
 		hitbox_node.draw_circle(Vector2.ZERO, 2.5, Color(1.0, 1.0, 1.0, 1.0))
@@ -158,17 +175,30 @@ func _on_trail_draw():
 			var alpha = 1.0 - (float(i) / trail_history.size())
 			trail_node.draw_line(pts[i], pts[i+1], Color(3.0, 3.0, 3.0, alpha), 15.0 * alpha)
 			
-	# Draw drones
+	# Draw drones (in trail_node local space, anchored around the ship's global_position)
 	if drone_active:
-		var p1 = Vector2(cos(drone_angle), sin(drone_angle)) * 60.0
-		var p2 = Vector2(cos(drone_angle + PI), sin(drone_angle + PI)) * 60.0
+		var ship_origin: Vector2 = global_position - trail_node.global_position
+		var p1 = ship_origin + Vector2(cos(drone_angle), sin(drone_angle)) * 60.0
+		var p2 = ship_origin + Vector2(cos(drone_angle + PI), sin(drone_angle + PI)) * 60.0
 		trail_node.draw_circle(p1, 6.0, Color(1.0, 0.5, 3.0))
+		trail_node.draw_circle(p1, 2.5, Color(2.5, 2.5, 3.0))
 		trail_node.draw_circle(p2, 6.0, Color(1.0, 0.5, 3.0))
+		trail_node.draw_circle(p2, 2.5, Color(2.5, 2.5, 3.0))
 
 # Trigger del hit flash. Chiamato da Main.damage_player quando il player viene
 # colpito. Visibile come bagliore bianco istantaneo (~80ms) sovrapposto al body.
 func trigger_hit_flash() -> void:
 	hit_flash_timer = HIT_FLASH_DURATION
+
+# Trigger Dash da bottone mobile/web: usa la direzione di movimento corrente
+# (o UP se la nave è ferma).
+func trigger_dash_from_ui() -> void:
+	if not can_move or is_dashing or dash_cooldown > 0.0:
+		return
+	is_dashing = true
+	dash_timer = DASH_DURATION
+	dash_cooldown = DASH_COOLDOWN
+	dash_dir = velocity.normalized() if velocity.length_squared() > 100.0 else Vector2.UP
 
 # SFX shoot: stesso pitch/volume del graze (3.0 / -10dB) — alto e discreto, non
 # copre la musica e si sente chiaramente sopra le esplosioni. Pan dalla pos
@@ -317,7 +347,19 @@ func _on_ship_draw() -> void:
 	n.draw_circle(WING_TIP_R, 4.5, Color(0.25, 1.0, 0.4, 0.55))
 	n.draw_circle(WING_TIP_R, 2.0, nav_green_core * pulse)
 
+	# === MUZZLE FLASH ai cannoni ===
+	if muzzle_flash_timer > 0.0:
+		var mf: float = muzzle_flash_timer / 0.045
+		var mf_col := Color(0.6 * mf, 2.0 * mf, 3.2 * mf, mf)
+		if drone_active:
+			for mp in [Vector2(-30, -14), Vector2(-15, -24), Vector2(15, -24), Vector2(30, -14)]:
+				n.draw_circle(mp, 4.5 * mf, mf_col)
+		else:
+			n.draw_circle(Vector2(-22, -14), 4.5 * mf, mf_col)
+			n.draw_circle(Vector2(22, -14), 4.5 * mf, mf_col)
+
 var can_move = true
+var auto_fire: bool = false
 var shoot_timer = 0.0
 # Timer separati per railgun e drones: prima un singolo `fire_buff_timer`
 # veniva sovrascritto da entrambi i pickup → drones (15s) seguito da railgun
@@ -379,7 +421,8 @@ func _process(delta):
 		if Input.is_action_pressed("move_left"):  input_dir.x -= 1
 		if Input.is_action_pressed("move_right"): input_dir.x += 1
 
-		var is_touching = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		var over_action_ui: bool = main != null and main.ui_manager != null and main.ui_manager.is_touching_action_ui()
+		var is_touching = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not over_action_ui
 		if is_touching:
 			# Compensa l'offset di shake della camera: get_global_mouse_position()
 			# include il camera offset, quindi senza compensazione il target balla
@@ -401,7 +444,7 @@ func _process(delta):
 				input_dir += (target_pos - position).normalized()
 
 		shoot_timer -= delta
-		if (Input.is_action_pressed("fire") or is_touching) and shoot_timer <= 0:
+		if (Input.is_action_pressed("fire") or is_touching or auto_fire) and shoot_timer <= 0:
 			if weapon_type == 1:
 				shoot_timer = SHOOT_RATE_RAILGUN
 				main.spawn_railgun(position + Vector2(0, -30))
@@ -412,15 +455,25 @@ func _process(delta):
 				main.spawn_player_bullet(position + Vector2(-15, -20))
 				main.spawn_player_bullet(position + Vector2(15, -20))
 				main.spawn_player_bullet(position + Vector2(30, -10))
+				muzzle_flash_timer = 0.045
 				_play_shoot_sfx()
 			else:
 				shoot_timer = SHOOT_RATE_NORMAL
 				main.spawn_player_bullet(position + Vector2(-22, -10))
 				main.spawn_player_bullet(position + Vector2(22, -10))
+				muzzle_flash_timer = 0.045
 				_play_shoot_sfx()
 	
 	if dash_cooldown > 0:
-		dash_cooldown -= delta
+		dash_cooldown = max(dash_cooldown - delta, 0.0)
+		_was_dash_cooling = true
+	elif _was_dash_cooling:
+		_was_dash_cooling = false
+		dash_ready_flash = 0.18
+	if dash_ready_flash > 0.0:
+		dash_ready_flash = max(dash_ready_flash - delta, 0.0)
+	if muzzle_flash_timer > 0.0:
+		muzzle_flash_timer = max(muzzle_flash_timer - delta, 0.0)
 		
 	# Tick i-frame timer post-damage; consuma indipendentemente dal dash.
 	if hit_iframe_timer > 0.0:
@@ -474,10 +527,12 @@ func _process(delta):
 	roll = lerp(roll, target_roll, 10.0 * delta)
 	rotation = roll
 	
-	# Effetti di stretching e hovering (nave procedurale)
-	var speed_ratio = velocity.length() / MAX_SPEED
+	# Effetti di stretching e hovering (nave procedurale).
+	# Clamp speed_ratio a [0, 1]: durante il dash velocity = 4*MAX_SPEED, senza
+	# clamp (1.0 - speed_ratio) diventava -3.0 causando un bob violento di ±30px.
+	# HitboxVisualizer resta ancorato a Vector2.ZERO (vero centro collisione).
+	var speed_ratio = clamp(velocity.length() / MAX_SPEED, 0.0, 1.0)
 	ship_bob = sin(time_passed * 6.0) * 10.0 * (1.0 - speed_ratio)
-	$HitboxVisualizer.position.y = ship_bob
 
 	# Stretching verticale + intensità fuoco in base alla direzione di input
 	var target_scale_y: float = 1.0
@@ -494,6 +549,8 @@ func _process(delta):
 		ship_renderer.position.y = ship_bob
 		ship_renderer.scale.y = ship_scale_y
 		ship_renderer.queue_redraw()
+	if has_node("HitboxVisualizer"):
+		$HitboxVisualizer.queue_redraw()
 
 	# Applica lo stesso bob ai motori (siblings di ship_renderer, non figli):
 	# senza questo, il corpo fluttua su/giù mentre gli ugelli restano fermi e

@@ -59,9 +59,14 @@ func _remove_enemy_bullet_at(idx: int) -> void:
 	active_enemy_bullets.pop_back()
 
 func clear_enemy_bullets_with_fx() -> void:
-	# Usato dalla smart bomb: piccola esplosione su ogni proiettile prima di tornare al pool.
-	for b in active_enemy_bullets:
-		explosion_system.spawn(b.pos, Color(1.0, 0.5, 0.5), 0.2)
+	# Usato dalla smart bomb: ring leggero campionato (max ~30) per evitare
+	# lag spike su WebGL quando ci sono centinaia di proiettili a schermo.
+	var total: int = active_enemy_bullets.size()
+	var stride: int = max(1, int(float(total) / 30.0))
+	for i in range(total):
+		var b: Dictionary = active_enemy_bullets[i]
+		if i % stride == 0:
+			explosion_system.spawn_ring(b.pos, Color(1.0, 0.5, 0.5), 24.0, 0.25)
 		pool_enemy_bullets.append(b)
 	active_enemy_bullets.clear()
 
@@ -77,7 +82,9 @@ func tick(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
 	var black_holes: Array = bh_system.black_holes if bh_system else []
-	var gsm: float = main.global_speed_multiplier if main else 1.0
+	# Cap velocità bullet nemici nei Drop a 2.2x per mantenere schivabilità
+	# anche durante i peak 4.8x del warp visivo.
+	var gsm: float = min(main.global_speed_multiplier if main else 1.0, 2.2)
 
 	_tick_player_bullets(delta, black_holes)
 	_tick_enemy_bullets(delta, gsm, black_holes)
@@ -186,11 +193,12 @@ func _tick_enemy_bullets(delta: float, gsm: float, black_holes: Array) -> void:
 			# graze SFX/explosion. Read del valore via `b.grazed` (o
 			# equivalentemente `b["grazed"]`) ripristina la meccanica.
 			b.grazed = true
-			main.add_score(Main.SCORE_PER_GRAZE)
+			var graze_pts: int = main.add_scaled_score(Main.SCORE_PER_GRAZE)
 			main.gain_flow(Main.FLOW_GAIN_PER_GRAZE)
+			main.spawn_floating_text(b.pos, "GRAZE +%d" % graze_pts, Color(0.6, 1.0, 1.0), 10, 0.55)
 			explosion_system.spawn(b.pos, Color(1.0, 1.0, 1.0, 0.5), 0.2)
 			audio_manager.play_sfx(3.0, -10.0, b.pos)  # graze: pan dalla pos del bullet
-		elif b.pos.y > screen_size.y + 100 or b.pos.x < -100 or b.pos.x > screen_size.x + 100:
+		elif b.pos.y > screen_size.y + 100 or b.pos.y < -100 or b.pos.x < -100 or b.pos.x > screen_size.x + 100:
 			_remove_enemy_bullet_at(i)
 
 # Kill side-effect (FX, score, hit-stop) lives in Main.handle_enemy_kill — same

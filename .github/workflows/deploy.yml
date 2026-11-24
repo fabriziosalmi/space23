@@ -67,7 +67,7 @@ jobs:
           custom_features=""
           export_filter="all_resources"
           include_filter=""
-          exclude_filter=""
+          exclude_filter="albireo.png,blackhole.png,cluster.png,galaxy.png,nebula.png,planets.png,screenshot.png,boot.svg,banner.svg,bg_v2.md,CHANGELOG.md,README.md,CONTRIBUTING.md,LICENSE"
           export_path="build/web/index.html"
           encryption_include_filters=""
           encryption_exclude_filters=""

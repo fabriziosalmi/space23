@@ -34,6 +34,16 @@ func tick(delta: float) -> void:
 			for ei in range(enemy_system.enemies.size() - 1, -1, -1):
 				var e: Dictionary = enemy_system.enemies[ei]
 				var dist: float = e.pos.distance_to(bh.pos)
+				if e.ai_type == Main.BOSS_TYPE_INDEX:
+					# Il Boss è troppo massivo per essere risucchiato/instakillato:
+					# subisce solo chip damage continuo dentro il raggio di gravità.
+					if dist < Main.BH_GRAVITY_RADIUS:
+						e.hp -= 20.0 * delta
+						e.hit_flash = max(e.hit_flash, 0.08)
+						if e.hp <= 0 and main:
+							main.handle_enemy_kill(e)
+							enemy_system.enemies.remove_at(ei)
+					continue
 				if dist < Main.BH_GRAVITY_RADIUS:
 					e.pos = e.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 200.0 * delta)
 					# Recompute dist post-move: il move_toward può aver portato
