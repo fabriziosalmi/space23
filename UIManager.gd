@@ -142,7 +142,7 @@ func _ready():
 	controls_label.size = Vector2(screen_size.x - 40, 40)
 	controls_label.position = Vector2(20, screen_size.y - 70)
 	controls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	controls_label.text = "WASD / STICK MOVE  •  SPACE FIRE  •  SHIFT DASH  •  X BOMB  •  F AUTO  •  M MUTE  •  ESC PAUSE"
+	controls_label.text = "WASD/STICK MOVE  •  SPACE/Z/RT FIRE  •  SHIFT/C/RMB/LT DASH  •  X/MMB BOMB  •  F AUTO  •  M MUTE"
 	controls_label.add_theme_font_override("font", arcade_font)
 	controls_label.add_theme_font_size_override("font_size", 11)
 	controls_label.add_theme_color_override("font_color", Color(0.8, 0.95, 1.0, 0.7))
@@ -323,12 +323,12 @@ func _ready():
 	add_child(pause_dim)
 
 	pause_label = Label.new()
-	pause_label.text = "P A U S E\n\nTAP  /  ESC  /  START"
+	pause_label.text = "P A U S E\n\nTAP / ESC / START   RESUME\nR   RESTART   •   M   MUTE"
 	pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pause_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	pause_label.size = screen_size
 	pause_label.add_theme_font_override("font", arcade_font)
-	pause_label.add_theme_font_size_override("font_size", 48)
+	pause_label.add_theme_font_size_override("font_size", 28)
 	pause_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
 	pause_label.add_theme_color_override("font_outline_color", Color(0.0, 0.2, 0.4))
 	pause_label.add_theme_constant_override("outline_size", 12)
@@ -541,9 +541,11 @@ func _process(delta):
 		if _sector_toast_t <= 0.0:
 			sector_label.hide()
 
+const _TITLE_IGNORED_KEYS := [KEY_M, KEY_ALT, KEY_CTRL, KEY_META, KEY_SHIFT, KEY_CAPSLOCK, KEY_TAB]
+
 func _input(event):
 	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch or event is InputEventJoypadButton):
-		if event is InputEventKey and event.physical_keycode == KEY_M:
+		if event is InputEventKey and event.physical_keycode in _TITLE_IGNORED_KEYS:
 			return
 		if not event.is_pressed() and not event.is_echo():
 			title_label.hide()
@@ -552,6 +554,14 @@ func _input(event):
 			if controls_label: controls_label.hide()
 			_show_play_ui()
 			start_pressed.emit()
+		return
+
+	# Joypad edge-triggered retry su Game Over (tutti i controller connessi):
+	# funziona anche con name_input visibile così chi gioca solo con gamepad
+	# non resta mai bloccato sul campo testo.
+	if game_over_container.visible and event is InputEventJoypadButton:
+		if event.pressed and not event.is_echo() and (event.button_index == JOY_BUTTON_A or event.button_index == JOY_BUTTON_START):
+			retry_pressed.emit()
 
 func _on_name_submitted(new_text: String):
 	new_text = _sanitize_name(new_text)
@@ -600,8 +610,12 @@ func show_game_over(distance_m: int, kill_score: int):
 	leaderboard_label.show()
 	name_input.show()
 	name_input.text = ""
-	name_input.grab_focus()
-	retry_button.hide()
+	if not OS.has_feature("mobile"):
+		name_input.grab_focus()
+	# RETRY sempre visibile anche prima di confermare il nome: risolve il
+	# soft-lock su mobile (dove la virtual keyboard è disabilitata) e su
+	# joypad; premere RETRY salva comunque lo score via auto_save_pending_score.
+	retry_button.show()
 
 # Chiamata da Main._on_retry_pressed PRIMA di hide_game_over: se c'è uno score
 # pendente (game over con name_input ancora visibile = utente non ha submitato

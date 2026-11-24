@@ -130,6 +130,7 @@ var heartbeat_timer: float = 0.0
 # Standard fighting/rhythm games: 6-10 frame ≈ 0.10-0.17s.
 const BOMB_INPUT_BUFFER: float = 0.18
 var bomb_buffer_timer: float = 0.0
+var _mmb_held: bool = false
 
 # Accumulator float per il top-half time bonus. Prima il bonus era
 #   score_points += int(15 * delta * (1 - y_ratio))
@@ -363,10 +364,11 @@ const _DEFAULT_KEY_BINDINGS := {
 	"move_down":  [KEY_S, KEY_DOWN],
 	"move_left":  [KEY_A, KEY_LEFT],
 	"move_right": [KEY_D, KEY_RIGHT],
-	"fire":       [KEY_SPACE],
-	"dash":       [KEY_SHIFT],
-	"bomb":       [KEY_X],
+	"fire":       [KEY_SPACE, KEY_Z, KEY_J],
+	"dash":       [KEY_SHIFT, KEY_C, KEY_K],
+	"bomb":       [KEY_X, KEY_B, KEY_L],
 	"pause":      [KEY_ESCAPE, KEY_P],
+	"restart":    [KEY_R],
 	"mute":       [KEY_M],
 	"autofire":   [KEY_F],
 }
@@ -374,7 +376,8 @@ const _DEFAULT_KEY_BINDINGS := {
 # Joypad button bindings (Xbox layout — PS controllers map identically via
 # Godot's gamepad DB). D-pad per il movimento digitale; face button A/X per
 # fire (+ RB), B/O per dash (+ LB), X/□ per bomb (+ Y/△ come secondario),
-# Start per pause. Stick analogico aggiunto sotto via InputEventJoypadMotion.
+# Start per pause. Stick analogico e trigger RT/LT aggiunti sotto via
+# InputEventJoypadMotion.
 const _DEFAULT_JOY_BUTTONS := {
 	"move_up":    [JOY_BUTTON_DPAD_UP],
 	"move_down":  [JOY_BUTTON_DPAD_DOWN],
@@ -386,23 +389,23 @@ const _DEFAULT_JOY_BUTTONS := {
 	"pause":      [JOY_BUTTON_START],
 }
 
-# Stick analogico (left). Formato: [axis_index, sign]. Sign -1 = direzione
-# negativa dell'asse (su / sinistra), +1 = positiva (giù / destra). Godot
-# usa una deadzone di 0.5 per is_action_pressed → lo stick fa effetto solo
-# oltre il 50% di inclinazione (Livello A: digitale). Il Livello B userebbe
-# get_action_strength per analogico graduato — non incluso qui.
+# Assi analogici joypad: left stick (movimento 360° graduato con deadzone 0.18)
+# + trigger RT (fire) e LT (dash).
 const _DEFAULT_JOY_AXES := {
 	"move_up":    [JOY_AXIS_LEFT_Y, -1.0],
 	"move_down":  [JOY_AXIS_LEFT_Y,  1.0],
 	"move_left":  [JOY_AXIS_LEFT_X, -1.0],
 	"move_right": [JOY_AXIS_LEFT_X,  1.0],
+	"fire":       [JOY_AXIS_TRIGGER_RIGHT, 1.0],
+	"dash":       [JOY_AXIS_TRIGGER_LEFT,  1.0],
 }
 
 func _setup_input_actions() -> void:
 	for action_name in _DEFAULT_KEY_BINDINGS.keys():
 		if InputMap.has_action(action_name):
 			InputMap.erase_action(action_name)
-		InputMap.add_action(action_name)
+		var dz: float = 0.18 if action_name.begins_with("move_") else 0.35
+		InputMap.add_action(action_name, dz)
 		# Keyboard bindings
 		for k in _DEFAULT_KEY_BINDINGS[action_name]:
 			var key_ev := InputEventKey.new()
@@ -773,12 +776,10 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("pause"):
 		toggle_pause()
 
-	# Pausa: freeze totale e immediato. Shake, bomb buffer, hit-stop e tutti i
-	# sistemi mantengono lo stato esatto al momento del press → l'unpause
-	# riprende seamless. Senza questo early-return, lo shake decadeva in
-	# real-time durante la pausa e all'unpause il momento era perso (es. pausi
-	# su un peak hit, attendi 1s, sblocchi → camera già a riposo).
+	# Pausa: freeze totale e immediato (ma R permette Quick Restart istantaneo).
 	if is_paused:
+		if Input.is_action_just_pressed("restart"):
+			_on_retry_pressed()
 		return
 
 	# Auto-fire toggle (F) durante PLAYING.
@@ -786,11 +787,13 @@ func _process(delta: float) -> void:
 		player.auto_fire = not player.auto_fire
 		spawn_floating_text(player.position, "AUTO-FIRE ON" if player.auto_fire else "AUTO-FIRE OFF", Color(0.5, 1.0, 1.0), 12, 0.9)
 
-	# Bomb input buffer: registriamo il press indipendentemente dallo stato di
-	# gioco, così non perdiamo l'input durante intro/transition/hit-stop. Il
-	# consumo avviene in _tick_playing al primo frame valido.
-	if Input.is_action_just_pressed("bomb"):
-		bomb_buffer_timer = BOMB_INPUT_BUFFER
+	# Bomb input buffer: tastiera/joypad (X/Y) + Middle-Click per mouse-only.
+	if Input.is_action_just_pressed("bomb") or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
+		if not _mmb_held or Input.is_action_just_pressed("bomb"):
+			bomb_buffer_timer = BOMB_INPUT_BUFFER
+		_mmb_held = Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)
+	else:
+		_mmb_held = false
 	# Decade SOLO quando il consumo sarebbe possibile (PLAYING reale, fuori
 	# transition e fuori hit-stop). Altrimenti BOMB_INPUT_BUFFER (180ms) scade
 	# prima che _tick_playing veda il press — un bomb premuto durante l'intro
@@ -850,11 +853,13 @@ func _process(delta: float) -> void:
 		bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, fake_pulse, audio_manager.audio_mid, audio_manager.audio_high)
 		return
 
-	# Retry da gameover (Enter / Space), solo quando name_input non è attivo
-	# così Enter conferma il nome e Space può essere digitato nel nome pilota.
-	if Input.is_action_just_pressed("ui_accept") and game_state == "GAMEOVER" and game_over_timer > 0.5 and not (ui_manager and ui_manager.is_entering_name()):
-		_on_retry_pressed()
-		return
+	# Retry da gameover (tastiera): Enter/Space quando name_input non è attivo.
+	# (Joypad A/Start è gestito edge-triggered in UIManager._input così non
+	# scatta se il giocatore teneva premuto A mentre moriva.)
+	if game_state == "GAMEOVER" and game_over_timer > 0.6:
+		if Input.is_action_just_pressed("ui_accept") and not (ui_manager and ui_manager.is_entering_name()):
+			_on_retry_pressed()
+			return
 
 	# Sub-state dispatch ESCLUSIVO. Prima era una catena spuria:
 	#   if GAMEOVER: _tick_gameover_fx(...)

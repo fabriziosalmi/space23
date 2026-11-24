@@ -46,6 +46,11 @@ var is_dashing = false
 var dash_timer = 0.0
 var dash_cooldown = 0.0
 var dash_dir = Vector2.ZERO
+const DASH_INPUT_BUFFER: float = 0.15
+var dash_buffer_timer: float = 0.0
+var _rmb_held: bool = false
+var _mouse_steering: bool = false
+var _mouse_target: Vector2 = Vector2.ZERO
 var is_invincible = false
 
 # Post-damage invincibility frames: dopo aver preso danno, ~0.4s di immunità
@@ -184,6 +189,12 @@ func _on_trail_draw():
 		trail_node.draw_circle(p1, 2.5, Color(2.5, 2.5, 3.0))
 		trail_node.draw_circle(p2, 6.0, Color(1.0, 0.5, 3.0))
 		trail_node.draw_circle(p2, 2.5, Color(2.5, 2.5, 3.0))
+
+	# Discreto micro-reticolo quando si guida col mouse/touch (cursore OS nascosto).
+	if _mouse_steering and can_move:
+		var m_local: Vector2 = _mouse_target - trail_node.global_position
+		trail_node.draw_arc(m_local, 9.0, 0.0, TAU, 20, Color(0.4, 1.4, 2.2, 0.35), 1.2, true)
+		trail_node.draw_circle(m_local, 2.0, Color(0.8, 1.8, 2.5, 0.55))
 
 # Trigger del hit flash. Chiamato da Main.damage_player quando il player viene
 # colpito. Visibile come bagliore bianco istantaneo (~80ms) sovrapposto al body.
@@ -415,33 +426,33 @@ func _process(delta):
 			main.spawn_drone_bullet(p1, drone_color)
 			main.spawn_drone_bullet(p2, drone_color)
 		
+	_mouse_steering = false
 	if can_move:
-		if Input.is_action_pressed("move_up"):    input_dir.y -= 1
-		if Input.is_action_pressed("move_down"):  input_dir.y += 1
-		if Input.is_action_pressed("move_left"):  input_dir.x -= 1
-		if Input.is_action_pressed("move_right"): input_dir.x += 1
+		# Movimento unificato: WASD/Frecce/D-pad (digitale 1.0) + Left Stick (analogico graduato 360°).
+		input_dir = Input.get_vector("move_left", "move_right", "move_up", "move_down", 0.18)
 
 		var over_action_ui: bool = main != null and main.ui_manager != null and main.ui_manager.is_touching_action_ui()
 		var is_touching = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not over_action_ui
 		if is_touching:
-			# Compensa l'offset di shake della camera: get_global_mouse_position()
-			# include il camera offset, quindi senza compensazione il target balla
-			# con la camera e la nave segue il jitter (frustrante in mouse/touch).
+			# Compensa l'offset di shake della camera e clampa al playable rect.
 			var target_pos = get_global_mouse_position() - main.main_camera.offset
-			# Clamp del target alla playable area (gli stessi bound del clamp di
-			# `position` poco sotto). Senza questo, un cursore tenuto fuori
-			# schermo (web fullscreen, mouse drag oltre il bordo) lascia
-			# `target_pos` molto distante: la nave si clamperebbe al bordo
-			# (position.x = screen_size.x - 80) ma la dead-zone resterebbe
-			# violata (distance² ≫ 225) → input_dir continua a spingere verso
-			# il bordo all'infinito, e la silhouette resta banked al massimo
-			# in roll. Clampando il target, la dead-zone si disengage non
-			# appena la nave raggiunge il bordo: roll torna a 0, niente input
-			# fantasma.
 			target_pos.x = clamp(target_pos.x, 80.0, screen_size.x - 80.0)
 			target_pos.y = clamp(target_pos.y, 80.0, screen_size.y - 80.0)
-			if position.distance_squared_to(target_pos) > 225.0:  # 15² — dead-zone
-				input_dir += (target_pos - position).normalized()
+			_mouse_steering = true
+			_mouse_target = target_pos
+			var delta_v: Vector2 = target_pos - position
+			var dist: float = delta_v.length()
+			# Ramp proporzionale (6..54 px): niente overshoot/jitter attorno al cursore.
+			if dist > 6.0:
+				var strength: float = clamp((dist - 6.0) / 48.0, 0.0, 1.0)
+				input_dir += (delta_v / dist) * strength
+
+		# Dash input buffer (150ms): tastiera/joypad + Right-Click per mouse-only.
+		var rmb_now: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and not over_action_ui
+		var rmb_just: bool = rmb_now and not _rmb_held
+		_rmb_held = rmb_now
+		if Input.is_action_just_pressed("dash") or rmb_just:
+			dash_buffer_timer = DASH_INPUT_BUFFER
 
 		shoot_timer -= delta
 		if (Input.is_action_pressed("fire") or is_touching or auto_fire) and shoot_timer <= 0:
@@ -482,24 +493,31 @@ func _process(delta):
 	if hit_flash_timer > 0.0:
 		hit_flash_timer = max(hit_flash_timer - delta, 0.0)
 
+	if dash_buffer_timer > 0.0:
+		dash_buffer_timer = max(dash_buffer_timer - delta, 0.0)
+
 	if is_dashing:
 		dash_timer -= delta # Real time! Il dash fotte il tempo
 		velocity = dash_dir * (MAX_SPEED * DASH_SPEED_MULT)
 		if dash_timer <= 0:
 			is_dashing = false
 	else:
-		if input_dir.length() > 0:
+		# Mantieni magnitudine analogica <= 1.0 (così inclinazioni lievi dello
+		# stick o mouse vicino al target danno micro-dodge fluido).
+		if input_dir.length() > 1.0:
 			input_dir = input_dir.normalized()
+		if input_dir.length() > 0.01:
 			velocity = velocity.move_toward(input_dir * MAX_SPEED, ACCELERATION * delta)
-
-			# Attiva Dash
-			if Input.is_action_pressed("dash") and dash_cooldown <= 0:
-				is_dashing = true
-				dash_timer = DASH_DURATION
-				dash_cooldown = DASH_COOLDOWN
-				dash_dir = input_dir
 		else:
 			velocity = velocity.move_toward(Vector2.ZERO, FRICTION * delta)
+
+		# Consuma il Dash dal buffer: funziona anche da fermo (dash verso l'alto).
+		if can_move and dash_buffer_timer > 0.0 and dash_cooldown <= 0.0:
+			dash_buffer_timer = 0.0
+			is_dashing = true
+			dash_timer = DASH_DURATION
+			dash_cooldown = DASH_COOLDOWN
+			dash_dir = input_dir.normalized() if input_dir.length() > 0.1 else Vector2.UP
 		
 	position += velocity * delta
 	position.x = clamp(position.x, 80, screen_size.x - 80)
