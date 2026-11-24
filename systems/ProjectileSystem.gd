@@ -12,10 +12,15 @@ class_name ProjectileSystem
 
 const PLAYER_BULLET_SPEED: float = 1200.0
 const HOMING_TURN_RATE: float = 1.2
+const COL_ENEMY_PINK := Color(3.0, 0.2, 1.5)
+const CORE_ENEMY_PINK := Color(4.0, 1.0, 3.0)
+const COL_ENEMY_HOMING := Color(3.0, 1.0, 0.1)
+const CORE_ENEMY_HOMING := Color(4.0, 3.0, 1.0)
 
 var player_bullets: Array = []
 var active_enemy_bullets: Array = []
 var pool_enemy_bullets: Array = []
+var _had_bullets: bool = false
 
 # Refs (settate da Main in _ready)
 var main: Node
@@ -81,6 +86,13 @@ func clear_all() -> void:
 func tick(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
+	var has_any: bool = not player_bullets.is_empty() or not active_enemy_bullets.is_empty()
+	if not has_any:
+		if _had_bullets:
+			_had_bullets = false
+			queue_redraw()
+		return
+	_had_bullets = true
 	var black_holes: Array = bh_system.black_holes if bh_system else []
 	# Cap velocità bullet nemici nei Drop a 2.2x per mantenere schivabilità
 	# anche durante i peak 4.8x del warp visivo.
@@ -91,15 +103,28 @@ func tick(delta: float) -> void:
 	queue_redraw()
 
 func _tick_player_bullets(delta: float, black_holes: Array) -> void:
+	if player_bullets.is_empty():
+		return
+	var has_bh: bool = not black_holes.is_empty()
+	var bh_r: float = Main.BH_PULL_RADIUS
+	var bh_r_sq: float = bh_r * bh_r
+	var bh_force_dt: float = Main.BH_PULL_FORCE_PLAYER_BULLET * delta
+	var max_x: float = screen_size.x + 50.0
+	var max_y: float = screen_size.y + 50.0
+	var enemies: Array = enemy_system.enemies if enemy_system else []
+	var pad: float = Main.PLAYER_BULLET_HIT_PADDING
+
 	for i in range(player_bullets.size() - 1, -1, -1):
 		var b: Dictionary = player_bullets[i]
 
-		# Gravità BH
-		for bh in black_holes:
-			var d: float = b.pos.distance_to(bh.pos)
-			if d < Main.BH_PULL_RADIUS:
-				var pull: Vector2 = (bh.pos - b.pos).normalized() * (1.0 - d / Main.BH_PULL_RADIUS) * Main.BH_PULL_FORCE_PLAYER_BULLET * delta
-				b.dir = (b.dir * b.speed + pull).normalized()
+		# Gravità BH (squared distance check prima di sqrt)
+		if has_bh:
+			for bh in black_holes:
+				var d_sq: float = b.pos.distance_squared_to(bh.pos)
+				if d_sq < bh_r_sq and d_sq > 0.0001:
+					var d: float = sqrt(d_sq)
+					var pull: Vector2 = ((bh.pos - b.pos) / d) * (1.0 - d / bh_r) * bh_force_dt
+					b.dir = (b.dir * b.speed + pull).normalized()
 
 		# Movimento (real-time, ignora time-dilation)
 		b.pos += b.dir * b.speed * delta
@@ -112,23 +137,11 @@ func _tick_player_bullets(delta: float, black_holes: Array) -> void:
 				b.pos.x = clamp(b.pos.x, 0, screen_size.x)
 
 		# Cull off-screen
-		if b.pos.y < -50 or b.pos.y > screen_size.y + 50 or b.pos.x < -50 or b.pos.x > screen_size.x + 50:
+		if b.pos.y < -50.0 or b.pos.y > max_y or b.pos.x < -50.0 or b.pos.x > max_x:
 			player_bullets.remove_at(i)
 			continue
 
-		# Collisione con nemici — point-in-box (bullet center inside
-		# enemy_AABB expanded by PLAYER_BULLET_HIT_PADDING). Sostituisce il
-		# vecchio `distance_squared < 35²` che trattava il nemico come punto:
-		# il boss mothership (300×180 silhouette) era hittable solo nel suo
-		# pixel center 35-radius circle, mentre i player bullet che colpivano
-		# le ali del boss passavano attraverso senza danno. AABB-based check
-		# usa la silhouette reale; padding 20 mantiene il "feel" sui piccoli
-		# (scout AABB 15×15 + 20 → 35×35 ≈ vecchio 35-radius).
-		# Hot inner loop (~6K check/frame nel worst case): point-in-box è
-		# 2 abs + 2 confronti contro AABB, più cheap dello squared dist.
 		var hit: bool = false
-		var enemies: Array = enemy_system.enemies if enemy_system else []
-		var pad: float = Main.PLAYER_BULLET_HIT_PADDING
 		for j in range(enemies.size() - 1, -1, -1):
 			var e: Dictionary = enemies[j]
 			var aabb: Vector2 = e.hit_aabb
@@ -137,68 +150,67 @@ func _tick_player_bullets(delta: float, black_holes: Array) -> void:
 				hit = true
 				e.hit_flash = 0.1
 				if e.hp <= 0:
-					# Kill: handle_enemy_kill spawna la sua esplosione orange
-					# scale 1.0 + boss FX. Niente bullet-hit cyan extra → meno
-					# rumore visivo "ho colpito" sopra il "ho ucciso".
 					_kill_enemy_at(j, e)
 				else:
-					# Non-letale: micro-spark cyan al punto di impatto. Scale
-					# 0.15 (era 0.3 sia su hit che kill — overkill per il
-					# sub-evento "hit"). Sells "ho colpito ma non ucciso"
-					# senza eclissare il vero kill.
 					explosion_system.spawn(b.pos, Color(0.5, 1.0, 2.0), 0.15)
 				break
 		if hit:
 			player_bullets.remove_at(i)
 
 func _tick_enemy_bullets(delta: float, gsm: float, black_holes: Array) -> void:
+	if active_enemy_bullets.is_empty():
+		return
+	var has_bh: bool = not black_holes.is_empty()
+	var bh_r: float = Main.BH_PULL_RADIUS
+	var bh_r_sq: float = bh_r * bh_r
+	var bh_force_dt: float = Main.BH_PULL_FORCE_PROJECTILE * delta
+	var move_dt: float = delta * gsm
+	var homing_t: float = HOMING_TURN_RATE * delta
+	var player_pos: Vector2 = player.position
+	var hb: float = player.HITBOX_RADIUS_BULLET
+	var hb_sq: float = hb * hb
+	var graze_sq: float = Main.GRAZE_RADIUS * Main.GRAZE_RADIUS
+	var iframed: bool = player.is_invincible or player.hit_iframe_timer > 0.0
+	var max_y: float = screen_size.y + 100.0
+	var max_x: float = screen_size.x + 100.0
+
 	for i in range(active_enemy_bullets.size() - 1, -1, -1):
 		var b: Dictionary = active_enemy_bullets[i]
 
-		# Gravità BH
-		for bh in black_holes:
-			var d: float = b.pos.distance_to(bh.pos)
-			if d < Main.BH_PULL_RADIUS:
-				var pull: Vector2 = (bh.pos - b.pos).normalized() * (1.0 - d / Main.BH_PULL_RADIUS) * Main.BH_PULL_FORCE_PROJECTILE * delta
-				b.dir = (b.dir * b.speed + pull).normalized()
+		# Gravità BH (squared distance check prima di sqrt)
+		if has_bh:
+			for bh in black_holes:
+				var d_sq: float = b.pos.distance_squared_to(bh.pos)
+				if d_sq < bh_r_sq and d_sq > 0.0001:
+					var d: float = sqrt(d_sq)
+					var pull: Vector2 = ((bh.pos - b.pos) / d) * (1.0 - d / bh_r) * bh_force_dt
+					b.dir = (b.dir * b.speed + pull).normalized()
 
 		# Homing
-		if b.has("homing") and b.homing and is_instance_valid(player):
-			var desired_dir: Vector2 = (player.position - b.pos).normalized()
-			b.dir = b.dir.lerp(desired_dir, HOMING_TURN_RATE * delta).normalized()
+		if b.homing:
+			var desired_dir: Vector2 = (player_pos - b.pos).normalized()
+			b.dir = b.dir.lerp(desired_dir, homing_t).normalized()
 
-		# Movimento (rallentato dal time-dilation — Superhot)
-		b.pos += b.dir * b.speed * delta * gsm
+		# Movimento
+		b.pos += b.dir * (b.speed * move_dt)
 
-		# Player hit / graze (squared distance, ~2500 check/frame nel worst case).
-		# Check sia is_invincible (stale dal frame precedente) che hit_iframe_timer
-		# (in-frame fresh): blocca stack di N bullet hit nello stesso frame.
-		var dist_sq: float = b.pos.distance_squared_to(player.position)
-		var hb: float = player.HITBOX_RADIUS_BULLET
-		var hb_sq: float = hb * hb
-		var graze_sq: float = Main.GRAZE_RADIUS * Main.GRAZE_RADIUS
-		var iframed: bool = player.is_invincible or player.hit_iframe_timer > 0.0
+		# Player hit / graze (hoisted invariants)
+		var dist_sq: float = b.pos.distance_squared_to(player_pos)
 		if dist_sq < hb_sq and not iframed:
-			explosion_system.spawn(player.position, Color(3.0, 0.2, 0.2), 0.5)
+			explosion_system.spawn(player_pos, Color(3.0, 0.2, 0.2), 0.5)
 			main.add_shake(10.0)
 			main.trigger_hit_stop(0.02)
 			_remove_enemy_bullet_at(i)
 			main.damage_player(Main.ENEMY_BULLET_DAMAGE)
+			iframed = true
 		elif dist_sq < graze_sq and not b.grazed and not iframed:
-			# `Dictionary.has(key)` ritorna true se la chiave esiste, NON se il
-			# valore è truthy. I bullet del pool hanno `grazed: false` settato
-			# da `_init_pool` e da `spawn_enemy_bullet` → la chiave esiste
-			# sempre → `not b.has("grazed")` era SEMPRE false → il branch graze
-			# non si eseguiva mai. Niente +50 score, niente +0.10 flow, niente
-			# graze SFX/explosion. Read del valore via `b.grazed` (o
-			# equivalentemente `b["grazed"]`) ripristina la meccanica.
 			b.grazed = true
 			var graze_pts: int = main.add_scaled_score(Main.SCORE_PER_GRAZE)
 			main.gain_flow(Main.FLOW_GAIN_PER_GRAZE)
 			main.spawn_floating_text(b.pos, "GRAZE +%d" % graze_pts, Color(0.6, 1.0, 1.0), 10, 0.55)
 			explosion_system.spawn(b.pos, Color(1.0, 1.0, 1.0, 0.5), 0.2)
-			audio_manager.play_sfx(3.0, -10.0, b.pos)  # graze: pan dalla pos del bullet
-		elif b.pos.y > screen_size.y + 100 or b.pos.y < -100 or b.pos.x < -100 or b.pos.x > screen_size.x + 100:
+			audio_manager.play_sfx(3.0, -10.0, b.pos)
+		elif b.pos.y > max_y or b.pos.y < -100.0 or b.pos.x < -100.0 or b.pos.x > max_x:
 			_remove_enemy_bullet_at(i)
 
 # Kill side-effect (FX, score, hit-stop) lives in Main.handle_enemy_kill — same
@@ -222,12 +234,11 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2(-2, -12), Vector2(4, 24)), b.color)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	# Enemy bullets (cerchio + core; arancio per homing, rosa per dritti)
+	# Enemy bullets (cerchio + core; colori const per zero allocazioni nel hot-path)
 	for b in active_enemy_bullets:
-		var col: Color = Color(3.0, 0.2, 1.5)         # Neon Pink
-		var core: Color = Color(4.0, 1.0, 3.0)
-		if b.has("homing") and b.homing:
-			col = Color(3.0, 1.0, 0.1)                # Neon Orange
-			core = Color(4.0, 3.0, 1.0)
-		draw_circle(b.pos, 5.0, col)
-		draw_circle(b.pos, 2.0, core)
+		if b.homing:
+			draw_circle(b.pos, 5.0, COL_ENEMY_HOMING)
+			draw_circle(b.pos, 2.0, CORE_ENEMY_HOMING)
+		else:
+			draw_circle(b.pos, 5.0, COL_ENEMY_PINK)
+			draw_circle(b.pos, 2.0, CORE_ENEMY_PINK)

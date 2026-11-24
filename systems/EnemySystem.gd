@@ -119,13 +119,13 @@ const ENEMY_TYPES := [
 func spawn(type_idx: int, pos: Vector2, diff: float, speed_mult: float = 1.0, color_mod: Color = Color(1, 1, 1, 1)) -> void:
 	var e_type: Dictionary = ENEMY_TYPES[type_idx]
 	var hp_value: int = int(e_type.hp * diff)
+	var pts_arr := PackedVector2Array(e_type.pts)
+	var pts_loop := PackedVector2Array(e_type.pts)
+	pts_loop.append(pts_arr[0])
 	enemies.append({
 		"pos": pos,
 		"hp": hp_value,
 		"max_hp": hp_value,
-		# base_hp = HP del tipo prima del moltiplicatore di difficulty. Usato dal
-		# hit-stop scaler in ProjectileSystem per restare diff-invariante (un
-		# fighter è sempre "fighter-class" anche a diff 4).
 		"base_hp": int(e_type.hp),
 		"speed": randf_range(e_type.speed[0], e_type.speed[1]) * diff * speed_mult,
 		"ai_type": e_type.ai,
@@ -134,10 +134,10 @@ func spawn(type_idx: int, pos: Vector2, diff: float, speed_mult: float = 1.0, co
 		"charge_timer": 0.0,
 		"shoot_timer": randf_range(e_type.shoot[0], e_type.shoot[1]),
 		"color": e_type.color * color_mod,
-		"pts": PackedVector2Array(e_type.pts),
+		"pts": pts_arr,
+		"pts_loop": pts_loop,
 		"hit_flash": 0.0,
 		"invader_dir": 1.0 if randf() > 0.5 else -1.0,
-		# AABB half-extents per collision (point-in-box) — vedi _aabb_cache.
 		"hit_aabb": _aabb_half_for_type(type_idx)
 	})
 
@@ -362,26 +362,20 @@ func _draw() -> void:
 
 	# Nemici (poligono + core glow audio-reattivo + edge glow al hit)
 	for e in enemies:
-		# Fill: tinta originale, brighter (non bianco) durante hit_flash.
+		# Fill: draw_colored_polygon evita allocazioni PackedColorArray per-frame.
 		var fill: Color = e.color
 		if e.hit_flash > 0:
 			fill = e.color * (1.0 + 4.0 * e.hit_flash)
 
-		var c_arr := PackedColorArray()
-		c_arr.resize(e.pts.size())
-		c_arr.fill(fill)
 		var beat_scale: float = 1.0 + (audio_low * 0.3)
 		draw_set_transform(e.pos, 0.0, Vector2(beat_scale, beat_scale))
-		draw_polygon(e.pts, c_arr)
+		draw_colored_polygon(e.pts, fill)
 
-		# Edge glow ring: attivo solo quando colpito; preserva la silhouette
-		# invece di sostituirla con un bianco invadente.
+		# Edge glow ring: usa pts_loop precalcolato allo spawn (zero allocazioni).
 		if e.hit_flash > 0:
 			var glow: Color = e.color * 4.0
 			glow.a = e.hit_flash
-			var loop := PackedVector2Array(e.pts)
-			loop.append(e.pts[0])
-			draw_polyline(loop, glow, 2.0 + 4.0 * e.hit_flash, true)
+			draw_polyline(e.pts_loop, glow, 2.0 + 4.0 * e.hit_flash, true)
 
 		draw_circle(Vector2.ZERO, 6.0, Color(2.5 + audio_low * 2.0, 0.5, 0.5))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

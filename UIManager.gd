@@ -58,6 +58,10 @@ var arcade_font
 # bloom HDR sui label colorati (yellow KILLS, orange BOMBS) per ~1 frame.
 var _prev_kill_score: int = -1
 var _prev_bombs: int = -1
+var _prev_dist_m: int = -1
+var _prev_buffs_text: String = ""
+var _prev_flow_mode: int = -1
+var _prev_flow_pct: int = -1
 const HUD_PULSE_DURATION: float = 0.10
 var _kill_pulse_t: float = 0.0
 var _bomb_pulse_t: float = 0.0
@@ -375,6 +379,8 @@ func _layout_for_size(s: Vector2) -> void:
 		dash_button.position = Vector2(s.x - 224, s.y - 116)
 	if mute_label:
 		mute_label.position = Vector2(s.x - 150, 48)
+	if flow_label:
+		flow_label.position = Vector2(s.x - 260.0, 20.0)
 	if sector_label:
 		sector_label.position = Vector2(s.x / 2.0 - 300, 76)
 	if boss_hp_label:
@@ -441,6 +447,7 @@ func _hide_play_ui() -> void:
 	bomb_label.hide()
 	if buffs_label:
 		buffs_label.text = ""
+		_prev_buffs_text = ""
 		buffs_label.hide()
 	if sector_label:
 		_sector_toast_t = 0.0
@@ -655,12 +662,23 @@ func hide_game_over():
 
 func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, bombs: int = 0, railgun_t: float = 0.0, drone_t: float = 0.0, dash_cd: float = 0.0):
 	_hp_target = hp
-	dist_label.text = "DIST  %dm" % distance_m
-	# "SCORE" anziché "KILLS": il valore include kills (250/5000), graze (50)
-	# e top-half time bonus (~14 pt/sec). "KILLS" era misleading — sembrava
-	# un counter di nemici uccisi mentre era un punteggio composito.
-	kill_label.text = "SCORE  %d" % kill_score
-	bomb_label.text = "BOMBS: " + str(bombs)
+
+	# Dirty-checked HUD strings: aggiorna .text solo quando il valore cambia.
+	if distance_m != _prev_dist_m:
+		_prev_dist_m = distance_m
+		dist_label.text = "DIST  %dm" % distance_m
+
+	if kill_score != _prev_kill_score:
+		if _prev_kill_score >= 0 and kill_score > _prev_kill_score:
+			_kill_pulse_t = HUD_PULSE_DURATION
+		_prev_kill_score = kill_score
+		kill_label.text = "SCORE  %d" % kill_score
+
+	if bombs != _prev_bombs:
+		if _prev_bombs >= 0:
+			_bomb_pulse_t = HUD_PULSE_DURATION
+		_prev_bombs = bombs
+		bomb_label.text = "BOMBS: " + str(bombs)
 
 	if bomb_button and bomb_button.visible:
 		bomb_button.modulate.a = 0.85 if bombs > 0 else 0.25
@@ -669,34 +687,41 @@ func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, 
 
 	_buff_expiring = (railgun_t > 0.0 and railgun_t < 2.5) or (drone_t > 0.0 and drone_t < 2.5)
 	if buffs_label:
-		var lines: PackedStringArray = []
-		if railgun_t > 0.0:
-			lines.append("RAIL  %.1fs" % railgun_t)
-		if drone_t > 0.0:
-			lines.append("DRONE %.1fs" % drone_t)
-		if dash_cd > 0.0:
-			lines.append("DASH  %.1fs" % dash_cd)
-		buffs_label.text = "\n".join(lines)
+		var new_buffs: String = ""
+		if railgun_t > 0.0 or drone_t > 0.0 or dash_cd > 0.0:
+			var lines: PackedStringArray = []
+			if railgun_t > 0.0:
+				lines.append("RAIL  %.1fs" % railgun_t)
+			if drone_t > 0.0:
+				lines.append("DRONE %.1fs" % drone_t)
+			if dash_cd > 0.0:
+				lines.append("DASH  %.1fs" % dash_cd)
+			new_buffs = "\n".join(lines)
+		if new_buffs != _prev_buffs_text:
+			_prev_buffs_text = new_buffs
+			buffs_label.text = new_buffs
 
-	# Pulse on increment. Skip the very first frame (when prev = -1) so the
-	# initial HUD show non triggera un pulse.
-	if _prev_kill_score >= 0 and kill_score > _prev_kill_score:
-		_kill_pulse_t = HUD_PULSE_DURATION
-	_prev_kill_score = kill_score
-	if _prev_bombs >= 0 and bombs != _prev_bombs:
-		_bomb_pulse_t = HUD_PULSE_DURATION
-	_prev_bombs = bombs
-
+	var vp_w: float = get_viewport().get_visible_rect().size.x
 	var mult: float = 1.0 + flow * 3.0
 	if flow >= 1.0:
-		flow_label.text = "MAX FLOW! %.1fx" % mult
-		flow_label.add_theme_color_override("font_color", Color(1.0, 0.2, 1.0))
-		flow_label.position = Vector2(get_viewport().get_visible_rect().size.x - 280, 20) + Vector2(randf_range(-3,3), randf_range(-3,3))
+		if _prev_flow_mode != 2:
+			_prev_flow_mode = 2
+			_prev_flow_pct = 100
+			flow_label.text = "MAX FLOW! 4.0x"
+			flow_label.add_theme_color_override("font_color", Color(1.0, 0.2, 1.0))
+		flow_label.position = Vector2(vp_w - 280.0, 20.0) + Vector2(randf_range(-3, 3), randf_range(-3, 3))
 	elif flow > 0.05:
-		flow_label.text = "FLOW %d%%  %.1fx" % [int(flow * 100), mult]
-		flow_label.add_theme_color_override("font_color", Color(0.2, 1.0, 1.0))
-		flow_label.position = Vector2(get_viewport().get_visible_rect().size.x - 260, 20)
-	else:
+		var pct: int = int(flow * 100.0)
+		if _prev_flow_mode != 1:
+			_prev_flow_mode = 1
+			flow_label.add_theme_color_override("font_color", Color(0.2, 1.0, 1.0))
+			flow_label.position = Vector2(vp_w - 260.0, 20.0)
+		if pct != _prev_flow_pct:
+			_prev_flow_pct = pct
+			flow_label.text = "FLOW %d%%  %.1fx" % [pct, mult]
+	elif _prev_flow_mode != 0:
+		_prev_flow_mode = 0
+		_prev_flow_pct = 0
 		flow_label.text = ""
 
 func load_highscores():

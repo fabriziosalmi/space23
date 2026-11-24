@@ -2,6 +2,9 @@ extends Node
 class_name AudioManager
 
 var sfx_players = []
+var sfx_timers: PackedFloat32Array = PackedFloat32Array()
+var _track_cache: Dictionary = {}
+var _preloading_path: String = ""
 var audio_stream_player: AudioStreamPlayer
 var audio_bus_idx: int
 var spectrum_analyzer: AudioEffectSpectrumAnalyzerInstance
@@ -88,6 +91,8 @@ func _ready():
 	# attenuation = 0 ⇒ nessun falloff con distanza (gli SFX restano sempre alla
 	# loudness richiesta), max_distance generoso, panning_strength morbido (0.6)
 	# per non sbattere troppo da un orecchio all'altro.
+	sfx_timers.resize(8)
+	sfx_timers.fill(0.0)
 	for i in range(8):
 		var p = AudioStreamPlayer2D.new()
 		p.bus = "Master"
@@ -98,6 +103,14 @@ func _ready():
 		sfx_players.append(p)
 
 func _process(delta):
+	# Tick fixed SFX slot timers (zero SceneTreeTimer allocations per shot).
+	for i in range(sfx_timers.size()):
+		if sfx_timers[i] > 0.0:
+			sfx_timers[i] -= delta
+			if sfx_timers[i] <= 0.0:
+				sfx_timers[i] = 0.0
+				sfx_players[i].stop()
+
 	# Spectrum reading: works fine on desktop Godot, but on Godot 4 web export
 	# AudioEffectSpectrumAnalyzer often returns near-zero magnitudes despite
 	# audio playing (known limitation: WebAudio chain doesn't always feed the
@@ -144,33 +157,56 @@ func _process(delta):
 	audio_mid = lerp(audio_mid, max(real_mid, synth_mid), 18.0 * delta)
 	audio_high = lerp(audio_high, max(real_high, synth_high), 18.0 * delta)
 
+func _get_or_load_track(path: String) -> AudioStream:
+	if _track_cache.has(path):
+		return _track_cache[path]
+	var stream: AudioStream = null
+	if _preloading_path == path:
+		var status := ResourceLoader.load_threaded_get_status(path)
+		if status == ResourceLoader.THREAD_LOAD_LOADED or status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			stream = ResourceLoader.load_threaded_get(path)
+		_preloading_path = ""
+	if stream == null:
+		stream = load(path)
+	if stream != null:
+		_track_cache[path] = stream
+	return stream
+
+func _preload_next_track(idx: int) -> void:
+	if playlist.is_empty():
+		return
+	var next_idx: int = (idx + 1) % playlist.size()
+	var next_path: String = playlist[next_idx].file
+	if _track_cache.has(next_path) or _preloading_path == next_path:
+		return
+	if ResourceLoader.load_threaded_request(next_path, "AudioStream") == OK:
+		_preloading_path = next_path
+
 func load_and_play_track(idx: int):
 	current_track_idx = idx
 	var track = playlist[idx]
-	var stream = load(track.file)
-	audio_stream_player.stream = stream
+	audio_stream_player.stream = _get_or_load_track(track.file)
 	audio_stream_player.play()
+	_preload_next_track(idx)
 
 # Riusa la traccia musicale corrente come fonte di SFX, scegliendo un offset
-# random tra 10s e 20s di playback come "snippet". È una scelta di design
-# intenzionale (concatenative-synth-poor-man's): gli SFX risuonano sempre
-# armonicamente con la musica, non sono campioni indipendenti.
-# `pos` opzionale: se passata, l'SFX pana stereo in base alla posizione relativa
-# alla camera (che Godot 4 usa come listener 2D). Senza `pos`, viene allineato
-# alla camera ⇒ centrato (no pan).
+# random tra 10s e 20s di playback come "snippet". Usa slot poolati con timer
+# in PackedFloat32Array (zero SceneTreeTimer allocati per colpo).
 func play_sfx(pitch: float, volume: float = 0.0, pos: Vector2 = Vector2.INF):
-	for p in sfx_players:
-		if not p.playing and audio_stream_player.stream != null:
+	if audio_stream_player.stream == null:
+		return
+	for i in range(sfx_players.size()):
+		if sfx_timers[i] <= 0.0:
+			var p: AudioStreamPlayer2D = sfx_players[i]
 			p.stream = audio_stream_player.stream
 			p.pitch_scale = pitch
 			p.volume_db = volume
-			# Posizione: pos esplicita se valida, altrimenti listener (camera).
 			if pos.x != INF and camera_ref != null:
 				p.global_position = pos
 			elif camera_ref != null:
 				p.global_position = camera_ref.global_position
 			p.play(randf_range(10.0, 20.0))
-			get_tree().create_timer(0.1).timeout.connect(p.stop)
+			sfx_timers[i] = 0.1
 			break
 
 func get_playback_position() -> float:

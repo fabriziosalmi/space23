@@ -11,6 +11,7 @@ const RAILGUN_HALF_WIDTH: float = 15.0
 const RAILGUN_DPS: float = 120.0
 
 var railguns: Array = []
+var _had_railguns: bool = false
 
 # Refs (settate da Main in _ready)
 var main: Node
@@ -25,6 +26,12 @@ func spawn(pos: Vector2) -> void:
 		main.add_shake(15.0)
 
 func tick(delta: float) -> void:
+	if railguns.is_empty():
+		if _had_railguns:
+			_had_railguns = false
+			queue_redraw()
+		return
+	_had_railguns = true
 	for i in range(railguns.size() - 1, -1, -1):
 		var r: Dictionary = railguns[i]
 		r.life -= delta

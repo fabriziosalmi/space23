@@ -6,6 +6,7 @@ class_name BlackHoleSystem
 # PostFXController per applicare il gravitational lensing.
 
 var black_holes: Array = []
+var _had_bh: bool = false
 
 # Refs (settate da Main in _ready)
 var main: Node                   # Main, per centralizzare gli FX di kill
@@ -16,6 +17,14 @@ func spawn(pos: Vector2) -> void:
 	black_holes.append({ "pos": pos, "life": Main.BH_LIFE })
 
 func tick(delta: float) -> void:
+	if black_holes.is_empty():
+		if _had_bh:
+			_had_bh = false
+			queue_redraw()
+		return
+	_had_bh = true
+	var grav_r_sq: float = Main.BH_GRAVITY_RADIUS * Main.BH_GRAVITY_RADIUS
+	var abs_r_sq: float = Main.BH_ABSORB_RADIUS * Main.BH_ABSORB_RADIUS
 	for i in range(black_holes.size() - 1, -1, -1):
 		var bh: Dictionary = black_holes[i]
 		bh.life -= delta
@@ -69,11 +78,12 @@ func tick(delta: float) -> void:
 			var bullets: Array = projectile_system.active_enemy_bullets
 			for bi in range(bullets.size() - 1, -1, -1):
 				var b: Dictionary = bullets[bi]
-				var dist: float = b.pos.distance_to(bh.pos)
-				if dist < Main.BH_GRAVITY_RADIUS:
+				var dist_sq: float = b.pos.distance_squared_to(bh.pos)
+				if dist_sq < grav_r_sq:
+					var dist: float = sqrt(dist_sq)
 					b.pos = b.pos.move_toward(bh.pos, (pull_force / max(dist, 10.0)) * 300.0 * delta)
-					dist = b.pos.distance_to(bh.pos)  # recompute stesso del enemy loop
-				if dist < Main.BH_ABSORB_RADIUS:
+					dist_sq = b.pos.distance_squared_to(bh.pos)
+				if dist_sq < abs_r_sq:
 					projectile_system._remove_enemy_bullet_at(bi)
 	queue_redraw()
 

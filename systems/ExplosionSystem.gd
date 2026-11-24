@@ -7,6 +7,7 @@ class_name ExplosionSystem
 const MAX_EXPLOSIONS: int = 80
 
 var explosions: Array = []
+var _had_explosions: bool = false
 
 func spawn(pos: Vector2, color: Color, scale_mod: float, is_super: bool = false) -> void:
 	if explosions.size() >= MAX_EXPLOSIONS:
@@ -42,12 +43,15 @@ func spawn(pos: Vector2, color: Color, scale_mod: float, is_super: bool = false)
 			var r: float = size * randf_range(0.3, 1.0)
 			pts.append(Vector2(cos(a), sin(a)) * r)
 
+		var pts_loop := PackedVector2Array(pts)
+		pts_loop.append(pts[0])
 		ex.shards.append({
 			"pos": pos,
 			"vel": Vector2(cos(angle), sin(angle)) * speed,
 			"rot": randf() * PI * 2.0,
 			"rot_speed": randf_range(-8.0, 8.0),
-			"pts": pts
+			"pts": pts,
+			"pts_loop": pts_loop
 		})
 	explosions.append(ex)
 
@@ -69,10 +73,16 @@ func spawn_ring(pos: Vector2, color: Color, max_radius: float, life: float = 0.4
 	})
 
 func tick(delta: float) -> void:
+	if explosions.is_empty():
+		if _had_explosions:
+			_had_explosions = false
+			queue_redraw()
+		return
+	_had_explosions = true
+	var drag: float = pow(0.92, delta * 60.0)
 	for i in range(explosions.size() - 1, -1, -1):
 		var ex: Dictionary = explosions[i]
 		ex.life -= delta
-		var drag: float = pow(0.92, delta * 60.0)
 		for j in range(ex.shards.size()):
 			ex.shards[j].pos += ex.shards[j].vel * delta
 			ex.shards[j].vel *= drag
@@ -101,8 +111,10 @@ func _draw() -> void:
 		if ex.is_super:
 			draw_circle(ex.pos, (1.0 - alpha) * 150.0, c * 0.5)  # Core implosivo
 
+		var edge_col := Color(3.0, 3.0, 3.0, alpha)
 		for s in ex.shards:
 			draw_set_transform(s.pos, s.rot, Vector2.ONE)
-			draw_polygon(s.pts, PackedColorArray([c, c, c]))
-			draw_polyline(s.pts + PackedVector2Array([s.pts[0]]), Color(3.0, 3.0, 3.0, alpha), 1.0, true)
+			draw_colored_polygon(s.pts, c)
+			draw_polyline(s.pts_loop, edge_col, 1.0, true)
+		if not ex.shards.is_empty():
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

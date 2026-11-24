@@ -10,6 +10,7 @@ const MAGNET_RADIUS: float = 135.0
 const MAGNET_PULL_SPEED: float = 420.0
 
 var powerups: Array = []
+var _had_powerups: bool = false
 
 # Refs (settate da Main in _ready)
 var main: Node
@@ -33,6 +34,12 @@ func spawn(pos: Vector2, type_idx: int) -> void:
 func tick(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
+	if powerups.is_empty():
+		if _had_powerups:
+			_had_powerups = false
+			queue_redraw()
+		return
+	_had_powerups = true
 	# Cap caduta nei Drop così i powerup restano raccoglibili anche a 4x warp.
 	var fall_gsm: float = min(main.global_speed_multiplier if main else 1.0, 1.8)
 	for i in range(powerups.size() - 1, -1, -1):

@@ -306,21 +306,12 @@ func _on_ship_draw() -> void:
 	# === ALI ===
 	var left_wing := PackedVector2Array([HULL_MID_L, WING_TIP_L, WING_BACK_L, HULL_BACK_L])
 	var right_wing := PackedVector2Array([HULL_MID_R, HULL_BACK_R, WING_BACK_R, WING_TIP_R])
-	var lw_cols := PackedColorArray()
-	lw_cols.resize(4)
-	lw_cols.fill(wing_shadow)
-	var rw_cols := PackedColorArray()
-	rw_cols.resize(4)
-	rw_cols.fill(wing_lit)
-	n.draw_polygon(left_wing, lw_cols)
-	n.draw_polygon(right_wing, rw_cols)
+	n.draw_colored_polygon(left_wing, wing_shadow)
+	n.draw_colored_polygon(right_wing, wing_lit)
 
 	# === FUSOLIERA ===
 	var hull := PackedVector2Array([NOSE, SHOULDER_R, HULL_MID_R, HULL_BACK_R, ENGINE_R, ENGINE_L, HULL_BACK_L, HULL_MID_L, SHOULDER_L])
-	var hull_cols := PackedColorArray()
-	hull_cols.resize(hull.size())
-	hull_cols.fill(hull_base)
-	n.draw_polygon(hull, hull_cols)
+	n.draw_colored_polygon(hull, hull_base)
 
 	# === TRIM NEON (HDR) ===
 	# Profili ali
