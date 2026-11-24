@@ -37,6 +37,7 @@ const POWERUP_DROP_CHANCE: float = 0.20
 
 # Bomb
 const STARTING_BOMBS: int = 3
+const MAX_BOMBS: int = 5
 const BOMB_SHAKE: float = 80.0
 const BOMB_ENEMY_DAMAGE: int = 50
 
@@ -93,8 +94,10 @@ var drop_event_triggered: bool = false  # one-shot per traccia
 var is_paused: bool = false
 var is_muted: bool = false
 
-# Run telemetry per Kill Chain, Overdrive e pagella finale arcade.
+# Run telemetry per Kill Chain, Overdrive, Graze scale, PB Live, Clean Sector e pagella finale.
 const CHAIN_WINDOW: float = 3.0
+const _GRAZE_SCALE := [1.0, 1.122, 1.26, 1.498, 1.682, 2.0]
+var selected_sector: int = 0
 var kill_count: int = 0
 var graze_count: int = 0
 var boss_kills: int = 0
@@ -103,6 +106,12 @@ var max_chain: int = 0
 var chain_timer: float = 0.0
 var max_sector: int = 1
 var _overdrive_announced: bool = false
+var _graze_streak: int = 0
+var _graze_streak_timer: float = 0.0
+var _pb_target: int = 0
+var _pb_beaten: bool = false
+var _took_damage_this_sector: bool = false
+var _last_drop_countdown: int = 0
 
 # Camera FX (trauma model, Squirrel Eiserloh GDC 2016).
 # `shake_intensity` resta come "trauma input" cumulativo (0..CAMERA_SHAKE_MAX), così
@@ -229,6 +238,7 @@ func _ready() -> void:
 	ui_manager.bomb_pressed.connect(_on_bomb_button_pressed)
 	ui_manager.dash_pressed.connect(func(): player.trigger_dash_from_ui())
 	ui_manager.pause_toggle_requested.connect(toggle_pause)
+	ui_manager.sector_changed.connect(_on_sector_changed)
 
 	# --- POST-PROCESSING (CanvasLayer 100, sopra il mondo / sotto la UI) ---
 	post_fx = preload("res://systems/PostFXController.gd").new()
@@ -324,9 +334,10 @@ func _ready() -> void:
 	wave_director.audio_manager = audio_manager  # phase coupling con la traccia
 	wave_director.load_from_json("res://waves.json")
 
-	# --- STATO INIZIALE ---
+	# --- STATO INIZIALE + PREFERENZE PERSISTENTI ---
 	player.can_move = false
 	game_state = "TITLE"
+	_apply_saved_prefs()
 
 	# Resize handler: ricomputiamo screen_size + camera center + propaghiamo
 	# screen_size ai sistemi che lo usano per cull boundaries (enemy, projectile,
@@ -440,12 +451,62 @@ func _setup_input_actions() -> void:
 # STATE TRANSITIONS
 # ============================================================
 
+func _apply_saved_prefs() -> void:
+	if not ui_manager:
+		return
+	var prefs: Dictionary = ui_manager.load_prefs()
+	is_muted = bool(prefs.get("muted", false))
+	AudioServer.set_bus_mute(0, is_muted)
+	ui_manager.set_mute_visible(is_muted)
+	player.auto_fire = bool(prefs.get("auto_fire", false))
+	ui_manager.set_autofire_visible(player.auto_fire)
+	var max_s: int = max(0, audio_manager.playlist.size() - 1)
+	selected_sector = clampi(int(prefs.get("sector", 0)), 0, max_s)
+	ui_manager.configure_sector_selector(audio_manager.playlist, selected_sector)
+
+func _save_prefs() -> void:
+	if ui_manager:
+		ui_manager.save_prefs({
+			"muted": is_muted,
+			"auto_fire": player.auto_fire,
+			"sector": selected_sector,
+		})
+
+func _on_sector_changed(idx: int) -> void:
+	selected_sector = clampi(idx, 0, max(0, audio_manager.playlist.size() - 1))
+	_save_prefs()
+
+func _apply_track_palette(idx: int) -> void:
+	if audio_manager and idx >= 0 and idx < audio_manager.playlist.size():
+		var t_colors = audio_manager.playlist[idx].colors
+		target_c_bg = t_colors[0]
+		target_c_neb1 = t_colors[1]
+		target_c_neb2 = t_colors[2]
+
+func _reset_run_telemetry() -> void:
+	kill_count = 0
+	graze_count = 0
+	boss_kills = 0
+	current_chain = 0
+	max_chain = 0
+	chain_timer = 0.0
+	max_sector = selected_sector + 1
+	_overdrive_announced = false
+	_graze_streak = 0
+	_graze_streak_timer = 0.0
+	_pb_target = ui_manager.get_top_highscore() if ui_manager else 0
+	_pb_beaten = false
+	_took_damage_this_sector = false
+	_last_drop_countdown = 0
+
 func _on_start_pressed() -> void:
 	game_state = "INTRO"
 	is_intro = true
-	audio_manager.load_and_play_track(0)
+	_reset_run_telemetry()
+	audio_manager.load_and_play_track(selected_sector)
+	_apply_track_palette(selected_sector)
 	if is_instance_valid(ui_manager):
-		ui_manager.show_sector_banner(1, int(audio_manager.get_current_bpm()))
+		ui_manager.show_sector_banner(selected_sector + 1, int(audio_manager.get_current_bpm()))
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 	main_camera.zoom = Vector2(INTRO_ZOOM, INTRO_ZOOM)
 	_set_cursor_hidden(true)
@@ -515,14 +576,7 @@ func _on_retry_pressed() -> void:
 	score_bonus_accum = 0.0
 	flow_state = 0.0
 	distance = 0.0
-	kill_count = 0
-	graze_count = 0
-	boss_kills = 0
-	current_chain = 0
-	max_chain = 0
-	chain_timer = 0.0
-	max_sector = 1
-	_overdrive_announced = false
+	_reset_run_telemetry()
 
 	wave_director.reset()
 
@@ -565,9 +619,10 @@ func _on_retry_pressed() -> void:
 	if ui_manager: ui_manager.set_pause_visible(false)
 	_set_cursor_hidden(true)
 
-	audio_manager.load_and_play_track(0)
+	audio_manager.load_and_play_track(selected_sector)
+	_apply_track_palette(selected_sector)
 	if is_instance_valid(ui_manager):
-		ui_manager.show_sector_banner(1, int(audio_manager.get_current_bpm()))
+		ui_manager.show_sector_banner(selected_sector + 1, int(audio_manager.get_current_bpm()))
 
 	if is_instance_valid(ui_manager):
 		# Se l'utente preme ui_accept (instant retry shortcut) prima di
@@ -626,8 +681,10 @@ func _on_drop_event() -> void:
 	enemy_system.spawn(4, Vector2(screen_size.x * 0.70, -100), diff)
 	# Powerup garantito (random tra i 4 tipi)
 	powerup_system.spawn(Vector2(screen_size.x / 2.0, -50), randi() % 4)
-	# Cue audio + shake leggero + popup DROP!
-	audio_manager.play_sfx(0.3, 8.0)
+	# Cue audio + shake leggero + snap camera zoom + popup DROP!
+	main_camera.zoom = Vector2(1.0, 1.0)
+	_last_drop_countdown = 0
+	audio_manager.play_sfx(0.3, 2.0, Vector2.INF, "bomb")
 	add_shake(20.0)
 	spawn_floating_text(Vector2(screen_size.x * 0.5, screen_size.y * 0.28), "DROP!  4x SPEED", Color(1.0, 0.35, 1.0), 20, 1.2)
 
@@ -652,6 +709,7 @@ func toggle_mute() -> void:
 	AudioServer.set_bus_mute(0, is_muted)
 	if ui_manager:
 		ui_manager.set_mute_visible(is_muted)
+	_save_prefs()
 
 func gain_flow(amount: float) -> void:
 	flow_state = min(flow_state + amount, 1.0)
@@ -666,8 +724,11 @@ func _check_overdrive_cue() -> void:
 	elif flow_state < 0.85:
 		_overdrive_announced = false
 
-func register_graze() -> void:
+func register_graze() -> float:
 	graze_count += 1
+	_graze_streak = min(_graze_streak + 1, _GRAZE_SCALE.size())
+	_graze_streak_timer = 1.2
+	return _GRAZE_SCALE[_graze_streak - 1]
 
 func try_drop_powerup(pos: Vector2) -> void:
 	if randf() < POWERUP_DROP_CHANCE:
@@ -702,16 +763,22 @@ func handle_enemy_kill(e: Dictionary) -> void:
 		add_shake(100.0)
 		trigger_hit_stop(1.2)
 		trigger_boss_lens(e.pos)
+		var b_cancelled: int = projectile_system.cancel_enemy_bullets_in_radius(e.pos, -1.0)
+		if b_cancelled > 0:
+			var bc_pts: int = add_scaled_score(b_cancelled * 25)
+			spawn_floating_text(e.pos + Vector2(0, 26), "CANCEL +%d" % bc_pts, Color(1.0, 0.9, 0.35), 13, 0.9)
 	else:
 		var pts: int = add_scaled_score(SCORE_PER_KILL)
 		spawn_floating_text(e.pos, "+%d" % pts, Color(1.0, 1.0, 0.35), 11, 0.65)
 		explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 1.0)
 		audio_manager.play_sfx(0.8, -6.0, e.pos, "kill")
-		# Hit-stop bracket su base_hp (pre-difficulty), così uno scout resta
-		# scout-class anche a diff 4. Buckets calibrati sui base_hp dei tipi:
-		# 2-4 (scout/squid)=0.02; 5-10 (fighter/crab/octopus/mantis/sentinel)=0.04;
-		# 12-30 (tank/dread/spinner)=0.07.
 		var bhp: int = int(e.get("base_hp", e.get("max_hp", 1)))
+		if bhp >= 15:
+			var cancelled: int = projectile_system.cancel_enemy_bullets_in_radius(e.pos, 180.0)
+			if cancelled > 0:
+				var c_pts: int = add_scaled_score(cancelled * 25)
+				gain_flow(min(cancelled * 0.015, 0.25))
+				spawn_floating_text(e.pos + Vector2(0, 18), "CANCEL +%d" % c_pts, Color(1.0, 0.9, 0.35), 11, 0.75)
 		var stop_dur: float
 		if bhp <= 4:
 			stop_dur = 0.02
@@ -738,6 +805,7 @@ func damage_player(amount: float) -> void:
 	if player.hit_iframe_timer > 0.0:
 		return
 	player_hp -= amount
+	_took_damage_this_sector = true
 	if flow_state >= 0.5 and is_instance_valid(player):
 		spawn_floating_text(player.position + Vector2(0, -28), "FLOW BREAK!", Color(1.0, 0.25, 0.3), 14, 0.9)
 	flow_state = 0.0
@@ -826,9 +894,12 @@ func _process(delta: float) -> void:
 			_on_retry_pressed()
 		return
 
-	# Auto-fire toggle (F) durante PLAYING.
+	# Auto-fire toggle (F) durante PLAYING (salvato nelle preferenze).
 	if Input.is_action_just_pressed("autofire") and game_state == "PLAYING":
 		player.auto_fire = not player.auto_fire
+		if ui_manager:
+			ui_manager.set_autofire_visible(player.auto_fire)
+		_save_prefs()
 		spawn_floating_text(player.position, "AUTO-FIRE ON" if player.auto_fire else "AUTO-FIRE OFF", Color(0.5, 1.0, 1.0), 12, 0.9)
 
 	# Bomb input buffer: tastiera/joypad (X/Y) + Middle-Click per mouse-only.
@@ -1060,6 +1131,16 @@ func _tick_track_transition(delta: float) -> void:
 
 	if audio_manager.transition_timer <= 0:
 		audio_manager.is_transitioning = false
+		# Bonus CLEAN SECTOR se la traccia appena conclusa è stata completata senza danni.
+		if not _took_damage_this_sector:
+			var clean_pts: int = add_scaled_score(2500)
+			var got_bomb: bool = player_bombs < MAX_BOMBS
+			if got_bomb:
+				player_bombs += 1
+			spawn_floating_text(Vector2(screen_size.x * 0.5, screen_size.y * 0.34), "CLEAN SECTOR +%d%s" % [clean_pts, "  +1 BOMB" if got_bomb else ""], Color(0.3, 1.0, 0.7), 15, 1.6)
+			audio_manager.play_sfx(2.5, 1.0, player.position, "pickup")
+		_took_damage_this_sector = false
+		_last_drop_countdown = 0
 		audio_manager.current_track_idx = (audio_manager.current_track_idx + 1) % audio_manager.playlist.size()
 		audio_manager.load_and_play_track(audio_manager.current_track_idx)
 		max_sector = max(max_sector, audio_manager.current_track_idx + 1)
@@ -1100,6 +1181,32 @@ func _tick_playing(delta: float) -> void:
 		if not drop_event_triggered:
 			drop_event_triggered = true
 			_on_drop_event()
+		main_camera.zoom = main_camera.zoom.lerp(Vector2(1.0, 1.0), 6.0 * delta)
+	elif not drop_event_triggered and drop - pos > 0.0 and drop - pos <= 3.0:
+		# Build-up pre-drop (3..2..1): tensione con micro-zoom camera 1.0 → 1.045.
+		var t_left: float = drop - pos
+		var tension: float = 1.0 - (t_left / 3.0)
+		var z: float = 1.0 + tension * 0.045
+		main_camera.zoom = main_camera.zoom.lerp(Vector2(z, z), 6.0 * delta)
+		var step: int = clampi(int(ceil(t_left)), 1, 3)
+		if step != _last_drop_countdown:
+			_last_drop_countdown = step
+			spawn_floating_text(Vector2(screen_size.x * 0.5, screen_size.y * 0.28), "%d" % step, Color(1.0, 0.55, 1.0), 22, 0.75)
+			audio_manager.play_sfx(2.3, -6.0, Vector2.INF, "charge")
+	else:
+		main_camera.zoom = main_camera.zoom.lerp(Vector2(1.0, 1.0), 6.0 * delta)
+
+	if _graze_streak_timer > 0.0:
+		_graze_streak_timer -= delta
+		if _graze_streak_timer <= 0.0:
+			_graze_streak = 0
+
+	# Personal Best live cue: scatta nel momento esatto in cui batti il record #1.
+	if _pb_target > 0 and not _pb_beaten and (int(distance) + score_points) > _pb_target:
+		_pb_beaten = true
+		spawn_floating_text(Vector2(screen_size.x * 0.5, screen_size.y * 0.22), "NEW RECORD!", Color(1.0, 0.88, 0.25), 18, 1.4)
+		audio_manager.play_sfx(2.5, 1.0, player.position, "pickup", 1.5)
+		explosion_system.spawn_ring(player.position, Color(2.5, 2.0, 0.4), 70.0, 0.4)
 
 	# SuperHot velocity-coupling RIMOSSO in v0.1.16. Storia: v0.1.6 floor 0.5,
 	# v0.1.15 floor 0.9, v0.1.16 niente. Il coupling player.velocity → gsm
