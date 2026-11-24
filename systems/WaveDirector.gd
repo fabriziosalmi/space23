@@ -105,7 +105,7 @@ func tick(delta: float, distance: float, screen_size: Vector2) -> void:
 		# Nessuna wave disponibile (es. distance=0 e tutte filtrate): riprova presto.
 		wave_timer = 1.0
 		return
-	wave_timer = (float(w_data.get("delay", 5.0)) / clamp(diff * 0.5, 1.0, 3.0)) * phase_mult
+	wave_timer = (float(w_data.get("delay", 5.0)) / clamp(diff * 0.45, 1.0, 2.0)) * phase_mult
 	_spawn_pattern(w_data, diff, screen_size)
 	wave_index += 1
 
