@@ -150,13 +150,13 @@ func _ready():
 func _on_trail_draw():
 	if trail_history.size() < 2: return
 
-	# Tier-3: trail color shifts toward white-hot on bass kicks.
+	# Tier-3: trail color shifts toward white-hot on bass kicks, and gold-white in MAX FLOW Overdrive.
 	var bass_kick: float = main.audio_manager.audio_low
-	# Base color = neon blue Color(0.2, 1.5, 3.0). Su bass: lerp verso
-	# Color(2.5, 2.5, 3.0) (bianco-hot quasi). Subtle ma sentibile.
-	var trail_r: float = 0.2 + bass_kick * 2.3
-	var trail_g: float = 1.5 + bass_kick * 1.0
-	var trail_b: float = 3.0 + bass_kick * 0.0  # blu già al massimo
+	var in_overdrive: bool = main != null and main.flow_state >= 1.0
+	var trail_r: float = (2.8 + bass_kick * 0.6) if in_overdrive else (0.2 + bass_kick * 2.3)
+	var trail_g: float = (2.0 + bass_kick * 0.8) if in_overdrive else (1.5 + bass_kick * 1.0)
+	var trail_b: float = (0.7 + bass_kick * 0.8) if in_overdrive else 3.0
+	var trail_w: float = 5.5 if in_overdrive else 4.0
 	# Disegna le scie laterali (sulle ali)
 	for side in [-1, 1]:
 		var pts = PackedVector2Array()
@@ -168,9 +168,9 @@ func _on_trail_draw():
 
 		for i in range(pts.size() - 1):
 			var alpha = 1.0 - (float(i) / trail_history.size())
-			trail_node.draw_line(pts[i], pts[i+1], Color(trail_r, trail_g, trail_b, alpha), 4.0 * alpha)
+			trail_node.draw_line(pts[i], pts[i+1], Color(trail_r, trail_g, trail_b, alpha), trail_w * alpha)
 			
-	# Se stiamo dashando, disegna anche una scia centrale massiccia
+	# Se stiamo dashando: scia centrale + 3 afterimage ghost della silhouette nave.
 	if is_dashing:
 		var pts = PackedVector2Array()
 		for i in range(trail_history.size()):
@@ -179,6 +179,14 @@ func _on_trail_draw():
 		for i in range(pts.size() - 1):
 			var alpha = 1.0 - (float(i) / trail_history.size())
 			trail_node.draw_line(pts[i], pts[i+1], Color(3.0, 3.0, 3.0, alpha), 15.0 * alpha)
+		var ghost_shape := PackedVector2Array([Vector2(0, -42), Vector2(-50, 14), Vector2(0, 22), Vector2(50, 14)])
+		for gi in [3, 7, 11]:
+			if gi < trail_history.size():
+				var gp = trail_history[gi]
+				var ga: float = 0.28 * (1.0 - float(gi) / 14.0)
+				trail_node.draw_set_transform(gp.pos - trail_node.global_position, gp.rot, Vector2.ONE)
+				trail_node.draw_colored_polygon(ghost_shape, Color(0.4, 1.8, 3.0, ga))
+		trail_node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			
 	# Draw drones (in trail_node local space, anchored around the ship's global_position)
 	if drone_active:
@@ -210,12 +218,12 @@ func trigger_dash_from_ui() -> void:
 	dash_timer = DASH_DURATION
 	dash_cooldown = DASH_COOLDOWN
 	dash_dir = velocity.normalized() if velocity.length_squared() > 100.0 else Vector2.UP
+	if main and main.audio_manager:
+		main.audio_manager.play_sfx(1.0, -4.0, position, "dash")
 
-# SFX shoot: stesso pitch/volume del graze (3.0 / -10dB) — alto e discreto, non
-# copre la musica e si sente chiaramente sopra le esplosioni. Pan dalla pos
-# del player. Il railgun è escluso (RailgunSystem ha il suo SFX dedicato).
+# SFX shoot: laser FM sintetizzato dal bank PCM.
 func _play_shoot_sfx() -> void:
-	main.audio_manager.play_sfx(3.0, -10.0, position)
+	main.audio_manager.play_sfx(3.0, -10.0, position, "shoot")
 
 # Disegna la nave proceduralmente: fusoliera + ali (con lighting L/R modulato dal
 # roll per un fake-3D), cockpit HDR audio-reattivo, trim neon che pulsa col bass,
@@ -447,16 +455,26 @@ func _process(delta):
 
 		shoot_timer -= delta
 		if (Input.is_action_pressed("fire") or is_touching or auto_fire) and shoot_timer <= 0:
+			var overdrive: bool = main != null and main.flow_state >= 1.0
 			if weapon_type == 1:
 				shoot_timer = SHOOT_RATE_RAILGUN
 				main.spawn_railgun(position + Vector2(0, -30))
-				# Railgun SFX è già emesso da RailgunSystem.spawn() — non duplicare.
 			elif drone_active:
-				shoot_timer = SHOOT_RATE_BUFFED  # Più veloce e 4 cannoni!
-				main.spawn_player_bullet(position + Vector2(-30, -10))
-				main.spawn_player_bullet(position + Vector2(-15, -20))
-				main.spawn_player_bullet(position + Vector2(15, -20))
-				main.spawn_player_bullet(position + Vector2(30, -10))
+				shoot_timer = 0.068 if overdrive else SHOOT_RATE_BUFFED
+				var bcol: Color = Color(3.0, 2.3, 0.8) if overdrive else Color(0.2, 1.5, 3.0)
+				main.spawn_player_bullet(position + Vector2(-30, -10), Vector2.UP, bcol)
+				main.spawn_player_bullet(position + Vector2(-15, -20), Vector2.UP, bcol)
+				main.spawn_player_bullet(position + Vector2(15, -20), Vector2.UP, bcol)
+				main.spawn_player_bullet(position + Vector2(30, -10), Vector2.UP, bcol)
+				muzzle_flash_timer = 0.045
+				_play_shoot_sfx()
+			elif overdrive:
+				# MAX FLOW Overdrive: 3-way tight spread bianco-oro HDR.
+				shoot_timer = 0.10
+				var od_col := Color(3.0, 2.4, 0.8)
+				main.spawn_player_bullet(position + Vector2(0, -24), Vector2.UP, od_col)
+				main.spawn_player_bullet(position + Vector2(-22, -10), Vector2.UP.rotated(-0.12), od_col)
+				main.spawn_player_bullet(position + Vector2(22, -10), Vector2.UP.rotated(0.12), od_col)
 				muzzle_flash_timer = 0.045
 				_play_shoot_sfx()
 			else:
@@ -509,6 +527,8 @@ func _process(delta):
 			dash_timer = DASH_DURATION
 			dash_cooldown = DASH_COOLDOWN
 			dash_dir = input_dir.normalized() if input_dir.length() > 0.1 else Vector2.UP
+			if main and main.audio_manager:
+				main.audio_manager.play_sfx(1.0, -4.0, position, "dash")
 		
 	position += velocity * delta
 	position.x = clamp(position.x, 80, screen_size.x - 80)

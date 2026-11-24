@@ -62,6 +62,7 @@ var _prev_dist_m: int = -1
 var _prev_buffs_text: String = ""
 var _prev_flow_mode: int = -1
 var _prev_flow_pct: int = -1
+var _prev_chain: int = -1
 const HUD_PULSE_DURATION: float = 0.10
 var _kill_pulse_t: float = 0.0
 var _bomb_pulse_t: float = 0.0
@@ -594,22 +595,36 @@ func _sanitize_name(raw: String) -> String:
 			break
 	return out
 
-func show_game_over(distance_m: int, kill_score: int):
+func show_game_over(distance_m: int, kill_score: int, stats: Dictionary = {}):
 	var total: int = distance_m + kill_score
 	current_final_score = total
 	_hide_play_ui()
 	if boss_hp_bar: boss_hp_bar.hide()
 	if boss_hp_label: boss_hp_label.hide()
-	# Label aggiornata: il valore "kill_score" è in realtà score_points
-	# (kills + grazes + top-half time bonus), non solo kills. "SCORE" è
-	# accurato; il breakdown DIST + SCORE chiarisce la composizione del totale.
 	var badge: String = ""
 	if total > 0:
 		if highscores.is_empty() or total > int(highscores[0]["score"]):
 			badge = "*** NEW RECORD! ***\n"
 		elif highscores.size() < 5 or total > int(highscores[highscores.size() - 1]["score"]):
 			badge = "TOP 5 PILOT!\n"
-	final_score_label.text = "%sFINAL SCORE: %d\n\nDIST  %d m   +   SCORE  %d" % [badge, total, distance_m, kill_score]
+	var bosses: int = int(stats.get("bosses", 0))
+	var rank: String = "C"
+	if total >= 60000 or bosses >= 2:
+		rank = "S"
+	elif total >= 25000 or bosses >= 1:
+		rank = "A"
+	elif total >= 10000:
+		rank = "B"
+	var stats_line: String = ""
+	if not stats.is_empty():
+		stats_line = "\nKILLS %d · GRAZE %d · CHAIN x%d · SEC %02d" % [
+			int(stats.get("kills", 0)),
+			int(stats.get("grazes", 0)),
+			int(stats.get("max_chain", 0)),
+			int(stats.get("sector", 1))
+		]
+	final_score_label.add_theme_font_size_override("font_size", 16)
+	final_score_label.text = "%sRANK %s  ·  FINAL SCORE: %d\nDIST %dm + SCORE %d%s" % [badge, rank, total, distance_m, kill_score, stats_line]
 	game_over_container.show()
 	# Leaderboard visible durante game over: prima era hidden per sempre dopo
 	# il primo TITLE → il giocatore non vedeva mai il proprio nuovo entry
@@ -660,7 +675,7 @@ func hide_game_over():
 	leaderboard_label.hide()
 	_show_play_ui()
 
-func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, bombs: int = 0, railgun_t: float = 0.0, drone_t: float = 0.0, dash_cd: float = 0.0):
+func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, bombs: int = 0, railgun_t: float = 0.0, drone_t: float = 0.0, dash_cd: float = 0.0, chain: int = 0):
 	_hp_target = hp
 
 	# Dirty-checked HUD strings: aggiorna .text solo quando il valore cambia.
@@ -703,12 +718,14 @@ func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, 
 
 	var vp_w: float = get_viewport().get_visible_rect().size.x
 	var mult: float = 1.0 + flow * 3.0
+	var chain_str: String = ("\nCHAIN x%d" % chain) if chain >= 2 else ""
 	if flow >= 1.0:
-		if _prev_flow_mode != 2:
+		if _prev_flow_mode != 2 or chain != _prev_chain:
 			_prev_flow_mode = 2
 			_prev_flow_pct = 100
-			flow_label.text = "MAX FLOW! 4.0x"
-			flow_label.add_theme_color_override("font_color", Color(1.0, 0.2, 1.0))
+			_prev_chain = chain
+			flow_label.text = "OVERDRIVE! 4.0x" + chain_str
+			flow_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.25))
 		flow_label.position = Vector2(vp_w - 280.0, 20.0) + Vector2(randf_range(-3, 3), randf_range(-3, 3))
 	elif flow > 0.05:
 		var pct: int = int(flow * 100.0)
@@ -716,12 +733,22 @@ func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, 
 			_prev_flow_mode = 1
 			flow_label.add_theme_color_override("font_color", Color(0.2, 1.0, 1.0))
 			flow_label.position = Vector2(vp_w - 260.0, 20.0)
-		if pct != _prev_flow_pct:
+		if pct != _prev_flow_pct or chain != _prev_chain:
 			_prev_flow_pct = pct
-			flow_label.text = "FLOW %d%%  %.1fx" % [pct, mult]
+			_prev_chain = chain
+			flow_label.text = ("FLOW %d%%  %.1fx" % [pct, mult]) + chain_str
+	elif chain >= 2:
+		if _prev_flow_mode != 3 or chain != _prev_chain:
+			_prev_flow_mode = 3
+			_prev_flow_pct = 0
+			_prev_chain = chain
+			flow_label.add_theme_color_override("font_color", Color(0.9, 0.95, 0.4))
+			flow_label.position = Vector2(vp_w - 260.0, 20.0)
+			flow_label.text = "CHAIN x%d" % chain
 	elif _prev_flow_mode != 0:
 		_prev_flow_mode = 0
 		_prev_flow_pct = 0
+		_prev_chain = 0
 		flow_label.text = ""
 
 func load_highscores():

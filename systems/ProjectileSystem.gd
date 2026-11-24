@@ -205,11 +205,12 @@ func _tick_enemy_bullets(delta: float, gsm: float, black_holes: Array) -> void:
 			iframed = true
 		elif dist_sq < graze_sq and not b.grazed and not iframed:
 			b.grazed = true
+			main.register_graze()
 			var graze_pts: int = main.add_scaled_score(Main.SCORE_PER_GRAZE)
 			main.gain_flow(Main.FLOW_GAIN_PER_GRAZE)
 			main.spawn_floating_text(b.pos, "GRAZE +%d" % graze_pts, Color(0.6, 1.0, 1.0), 10, 0.55)
 			explosion_system.spawn(b.pos, Color(1.0, 1.0, 1.0, 0.5), 0.2)
-			audio_manager.play_sfx(3.0, -10.0, b.pos)
+			audio_manager.play_sfx(3.0, -6.0, b.pos, "graze")
 		elif b.pos.y > max_y or b.pos.y < -100.0 or b.pos.x < -100.0 or b.pos.x > max_x:
 			_remove_enemy_bullet_at(i)
 

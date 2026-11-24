@@ -234,6 +234,11 @@ func tick(delta: float) -> void:
 
 # ========== AI ROUTINES ==========
 
+func _beat_gate(half_beat: bool = false) -> bool:
+	if not audio_manager or not audio_manager.audio_stream_player or not audio_manager.audio_stream_player.playing:
+		return true
+	return audio_manager.half_beat_triggered if half_beat else audio_manager.beat_triggered
+
 func _ai_fighter(e: Dictionary, delta: float, gsm: float) -> void:
 	# Scende, ferma e carica, spara spread di 3, fugge.
 	if e.ai_state == "ENTER":
@@ -264,12 +269,12 @@ func _ai_scout(e: Dictionary, delta: float, gsm: float) -> void:
 		e.pos.x += sin(e.ai_timer * 3.0) * 80.0 * delta
 
 func _ai_tank(e: Dictionary, delta: float, gsm: float) -> void:
-	# Lento; insegue X del player; missili traccianti.
+	# Lento; insegue X del player; missili traccianti quantizzati sul beat.
 	e.pos.y += e.speed * 0.5 * gsm * delta
 	e.pos.x = lerp(e.pos.x, player.position.x, 0.5 * delta)
 	e.shoot_timer -= delta
-	if e.shoot_timer <= 0:
-		e.shoot_timer = randf_range(2.5, 4.0)
+	if e.shoot_timer <= 0.0 and (_beat_gate(false) or e.shoot_timer < -0.5):
+		e.shoot_timer = randf_range(2.2, 3.6)
 		var dir: Vector2 = (player.position - e.pos).normalized()
 		projectile_system.spawn_enemy_bullet(e.pos, dir, 250.0, true)
 
@@ -304,8 +309,8 @@ func _ai_invader(e: Dictionary, delta: float, gsm: float) -> void:
 	# (1.5..2.5) e gli invader non sparavano MAI dopo lo spawn. Tutte le altre
 	# AI fanno `e.shoot_timer -= delta` prima del check, qui era saltato.
 	e.shoot_timer -= delta
-	if e.shoot_timer <= 0:
-		e.shoot_timer = randf_range(1.5, 2.5)
+	if e.shoot_timer <= 0.0 and (_beat_gate(true) or e.shoot_timer < -0.35):
+		e.shoot_timer = randf_range(1.4, 2.3)
 		projectile_system.spawn_enemy_bullet(e.pos, Vector2.DOWN, 250.0, false)
 	if e.pos.y > screen_size.y + 100:
 		e.hp = 0
@@ -335,10 +340,10 @@ func _ai_mothership(e: Dictionary, delta: float, gsm: float) -> void:
 			if not e.get("telegraph_charging", false):
 				e.telegraph_charging = true
 				audio_manager.play_sfx(2.5, 0.0, e.pos)
-		if e.shoot_timer <= 0:
-			e.shoot_timer = 1.45 if phase2 else 2.0
+		if e.shoot_timer <= 0.0 and (_beat_gate(false) or e.shoot_timer < -0.5):
+			e.shoot_timer = 1.35 if phase2 else 1.85
 			e.telegraph_charging = false
-			audio_manager.play_sfx(0.8, 2.0, e.pos)
+			audio_manager.play_sfx(0.8, 0.0, e.pos, "kill")
 			var a: float = e.ai_timer * (4.2 if phase2 else 3.0)
 			var ring_count: int = 20 if phase2 else 16
 			var ring_speed: float = 240.0 if phase2 else 200.0
