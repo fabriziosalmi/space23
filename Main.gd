@@ -91,6 +91,7 @@ var player_bombs: int = STARTING_BOMBS
 var has_boss_spawned: bool = false
 var drop_event_triggered: bool = false  # one-shot per traccia
 var is_paused: bool = false
+var is_muted: bool = false
 
 # Camera FX (trauma model, Squirrel Eiserloh GDC 2016).
 # `shake_intensity` resta come "trauma input" cumulativo (0..CAMERA_SHAKE_MAX), così
@@ -129,6 +130,7 @@ var heartbeat_timer: float = 0.0
 # Standard fighting/rhythm games: 6-10 frame ≈ 0.10-0.17s.
 const BOMB_INPUT_BUFFER: float = 0.18
 var bomb_buffer_timer: float = 0.0
+var _mmb_held: bool = false
 
 # Accumulator float per il top-half time bonus. Prima il bonus era
 #   score_points += int(15 * delta * (1 - y_ratio))
@@ -172,6 +174,7 @@ var railgun_system: RailgunSystem
 var bh_system: BlackHoleSystem
 var wave_director: WaveDirector
 var post_fx: PostFXController
+var floating_text: FloatingTextSystem
 
 @onready var player = preload("res://Player.tscn").instantiate()
 
@@ -213,6 +216,7 @@ func _ready() -> void:
 	ui_manager.name_submitted.connect(_on_name_submitted)
 	ui_manager.retry_pressed.connect(_on_retry_pressed)
 	ui_manager.bomb_pressed.connect(_on_bomb_button_pressed)
+	ui_manager.dash_pressed.connect(func(): player.trigger_dash_from_ui())
 	ui_manager.pause_toggle_requested.connect(toggle_pause)
 
 	# --- POST-PROCESSING (CanvasLayer 100, sopra il mondo / sotto la UI) ---
@@ -253,6 +257,9 @@ func _ready() -> void:
 
 	wave_director = preload("res://systems/WaveDirector.gd").new()
 	add_child(wave_director)
+
+	floating_text = preload("res://systems/FloatingTextSystem.gd").new()
+	add_child(floating_text)
 
 	# --- PLAYER (sopra tutto il gameplay) ---
 	add_child(player)
@@ -331,7 +338,8 @@ func _on_viewport_resized() -> void:
 		# Riposizioniamo al centro del nuovo viewport: al frame next, il
 		# parallasse converge sulla nuova target_cam_x.
 		main_camera.position = screen_size / 2.0
-	# Propaga screen_size ai sistemi (cull boundaries, AI movement bounds).
+	# Propaga screen_size ai sistemi (cull boundaries, AI movement bounds, player clamp).
+	if player: player.screen_size = screen_size
 	if enemy_system: enemy_system.screen_size = screen_size
 	if projectile_system: projectile_system.screen_size = screen_size
 	if powerup_system: powerup_system.screen_size = screen_size
@@ -356,16 +364,20 @@ const _DEFAULT_KEY_BINDINGS := {
 	"move_down":  [KEY_S, KEY_DOWN],
 	"move_left":  [KEY_A, KEY_LEFT],
 	"move_right": [KEY_D, KEY_RIGHT],
-	"fire":       [KEY_SPACE],
-	"dash":       [KEY_SHIFT],
-	"bomb":       [KEY_X],
+	"fire":       [KEY_SPACE, KEY_Z, KEY_J],
+	"dash":       [KEY_SHIFT, KEY_C, KEY_K],
+	"bomb":       [KEY_X, KEY_B, KEY_L],
 	"pause":      [KEY_ESCAPE, KEY_P],
+	"restart":    [KEY_R],
+	"mute":       [KEY_M],
+	"autofire":   [KEY_F],
 }
 
 # Joypad button bindings (Xbox layout — PS controllers map identically via
 # Godot's gamepad DB). D-pad per il movimento digitale; face button A/X per
 # fire (+ RB), B/O per dash (+ LB), X/□ per bomb (+ Y/△ come secondario),
-# Start per pause. Stick analogico aggiunto sotto via InputEventJoypadMotion.
+# Start per pause. Stick analogico e trigger RT/LT aggiunti sotto via
+# InputEventJoypadMotion.
 const _DEFAULT_JOY_BUTTONS := {
 	"move_up":    [JOY_BUTTON_DPAD_UP],
 	"move_down":  [JOY_BUTTON_DPAD_DOWN],
@@ -377,23 +389,23 @@ const _DEFAULT_JOY_BUTTONS := {
 	"pause":      [JOY_BUTTON_START],
 }
 
-# Stick analogico (left). Formato: [axis_index, sign]. Sign -1 = direzione
-# negativa dell'asse (su / sinistra), +1 = positiva (giù / destra). Godot
-# usa una deadzone di 0.5 per is_action_pressed → lo stick fa effetto solo
-# oltre il 50% di inclinazione (Livello A: digitale). Il Livello B userebbe
-# get_action_strength per analogico graduato — non incluso qui.
+# Assi analogici joypad: left stick (movimento 360° graduato con deadzone 0.18)
+# + trigger RT (fire) e LT (dash).
 const _DEFAULT_JOY_AXES := {
 	"move_up":    [JOY_AXIS_LEFT_Y, -1.0],
 	"move_down":  [JOY_AXIS_LEFT_Y,  1.0],
 	"move_left":  [JOY_AXIS_LEFT_X, -1.0],
 	"move_right": [JOY_AXIS_LEFT_X,  1.0],
+	"fire":       [JOY_AXIS_TRIGGER_RIGHT, 1.0],
+	"dash":       [JOY_AXIS_TRIGGER_LEFT,  1.0],
 }
 
 func _setup_input_actions() -> void:
 	for action_name in _DEFAULT_KEY_BINDINGS.keys():
 		if InputMap.has_action(action_name):
 			InputMap.erase_action(action_name)
-		InputMap.add_action(action_name)
+		var dz: float = 0.18 if action_name.begins_with("move_") else 0.35
+		InputMap.add_action(action_name, dz)
 		# Keyboard bindings
 		for k in _DEFAULT_KEY_BINDINGS[action_name]:
 			var key_ev := InputEventKey.new()
@@ -421,6 +433,8 @@ func _on_start_pressed() -> void:
 	game_state = "INTRO"
 	is_intro = true
 	audio_manager.load_and_play_track(0)
+	if is_instance_valid(ui_manager):
+		ui_manager.show_sector_banner(1, int(audio_manager.get_current_bpm()))
 	main_camera.position = Vector2(screen_size.x / 2, screen_size.y - 160)
 	main_camera.zoom = Vector2(INTRO_ZOOM, INTRO_ZOOM)
 	_set_cursor_hidden(true)
@@ -481,9 +495,8 @@ func _on_retry_pressed() -> void:
 	global_speed_multiplier = 1.0
 	target_speed_multiplier = 1.0
 
-	# Instant Restart (QoL SOTA): un piccolo punch al respawn.
-	add_shake(150.0)
-	trigger_hit_stop(0.5)
+	# Instant Restart (QoL SOTA): piccolo punch visivo senza congelare l'input.
+	add_shake(CAMERA_SHAKE_MAX)
 
 	player_hp = PLAYER_HP_MAX
 	player_bombs = STARTING_BOMBS
@@ -520,6 +533,7 @@ func _on_retry_pressed() -> void:
 	railgun_system.clear()
 	bh_system.clear()
 	explosion_system.clear()
+	if floating_text: floating_text.clear()
 	if bg_renderer:
 		bg_renderer.clear_landmarks()
 
@@ -533,6 +547,8 @@ func _on_retry_pressed() -> void:
 	_set_cursor_hidden(true)
 
 	audio_manager.load_and_play_track(0)
+	if is_instance_valid(ui_manager):
+		ui_manager.show_sector_banner(1, int(audio_manager.get_current_bpm()))
 
 	if is_instance_valid(ui_manager):
 		# Se l'utente preme ui_accept (instant retry shortcut) prima di
@@ -591,12 +607,32 @@ func _on_drop_event() -> void:
 	enemy_system.spawn(4, Vector2(screen_size.x * 0.70, -100), diff)
 	# Powerup garantito (random tra i 4 tipi)
 	powerup_system.spawn(Vector2(screen_size.x / 2.0, -50), randi() % 4)
-	# Cue audio + shake leggero come "qui parte la goduria" — pan centrato (default).
+	# Cue audio + shake leggero + popup DROP!
 	audio_manager.play_sfx(0.3, 8.0)
 	add_shake(20.0)
+	spawn_floating_text(Vector2(screen_size.x * 0.5, screen_size.y * 0.28), "DROP!  4x SPEED", Color(1.0, 0.35, 1.0), 20, 1.2)
+
+func score_multiplier() -> float:
+	# Moltiplicatore arcade legato al Flow: 1.0x (0%) → 4.0x (MAX FLOW).
+	return 1.0 + flow_state * 3.0
 
 func add_score(n: int) -> void:
 	score_points += n
+
+func add_scaled_score(base: int) -> int:
+	var awarded: int = int(round(float(base) * score_multiplier()))
+	score_points += awarded
+	return awarded
+
+func spawn_floating_text(pos: Vector2, label: String, color: Color = Color(1.0, 1.0, 0.4), font_size: int = 12, life: float = 0.75) -> void:
+	if floating_text:
+		floating_text.spawn(pos, label, color, font_size, life)
+
+func toggle_mute() -> void:
+	is_muted = not is_muted
+	AudioServer.set_bus_mute(0, is_muted)
+	if ui_manager:
+		ui_manager.set_mute_visible(is_muted)
 
 func gain_flow(amount: float) -> void:
 	flow_state = min(flow_state + amount, 1.0)
@@ -621,13 +657,16 @@ func handle_enemy_kill(e: Dictionary) -> void:
 	if e.ai_type == BOSS_TYPE_INDEX:
 		if is_instance_valid(ui_manager):
 			ui_manager.update_boss_hp(0, 100)
-		add_score(SCORE_PER_BOSS)
+		var boss_pts: int = add_scaled_score(SCORE_PER_BOSS + SCORE_PER_KILL)
+		spawn_floating_text(e.pos, "BOSS +%d" % boss_pts, Color(1.0, 0.85, 0.2), 18, 1.3)
 		explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 3.0, true)
 		audio_manager.play_sfx(0.2, 10.0, e.pos)  # boss kill: pan dalla pos del boss
 		add_shake(100.0)
 		trigger_hit_stop(1.2)
 		trigger_boss_lens(e.pos)
 	else:
+		var pts: int = add_scaled_score(SCORE_PER_KILL)
+		spawn_floating_text(e.pos, "+%d" % pts, Color(1.0, 1.0, 0.35), 11, 0.65)
 		explosion_system.spawn(e.pos, Color(3.0, 1.0, 0.2), 1.0)
 		# Hit-stop bracket su base_hp (pre-difficulty), così uno scout resta
 		# scout-class anche a diff 4. Buckets calibrati sui base_hp dei tipi:
@@ -645,7 +684,6 @@ func handle_enemy_kill(e: Dictionary) -> void:
 
 	gain_flow(FLOW_GAIN_PER_KILL)
 	try_drop_powerup(e.pos)
-	add_score(SCORE_PER_KILL)
 
 func damage_player(amount: float) -> void:
 	# Guard GAMEOVER: backstop. I sistemi gameplay sono già skippati nel main
@@ -730,23 +768,32 @@ func trigger_smart_bomb() -> void:
 # ============================================================
 
 func _process(delta: float) -> void:
+	# Mute toggle (M): sempre disponibile tranne mentre si digita il nome pilota.
+	if Input.is_action_just_pressed("mute") and not (ui_manager and ui_manager.is_entering_name()):
+		toggle_mute()
+
 	# Pause toggle: sempre processato (ESC/P sblocca anche se in pausa).
 	if Input.is_action_just_pressed("pause"):
 		toggle_pause()
 
-	# Pausa: freeze totale e immediato. Shake, bomb buffer, hit-stop e tutti i
-	# sistemi mantengono lo stato esatto al momento del press → l'unpause
-	# riprende seamless. Senza questo early-return, lo shake decadeva in
-	# real-time durante la pausa e all'unpause il momento era perso (es. pausi
-	# su un peak hit, attendi 1s, sblocchi → camera già a riposo).
+	# Pausa: freeze totale e immediato (ma R permette Quick Restart istantaneo).
 	if is_paused:
+		if Input.is_action_just_pressed("restart"):
+			_on_retry_pressed()
 		return
 
-	# Bomb input buffer: registriamo il press indipendentemente dallo stato di
-	# gioco, così non perdiamo l'input durante intro/transition/hit-stop. Il
-	# consumo avviene in _tick_playing al primo frame valido.
-	if Input.is_action_just_pressed("bomb"):
-		bomb_buffer_timer = BOMB_INPUT_BUFFER
+	# Auto-fire toggle (F) durante PLAYING.
+	if Input.is_action_just_pressed("autofire") and game_state == "PLAYING":
+		player.auto_fire = not player.auto_fire
+		spawn_floating_text(player.position, "AUTO-FIRE ON" if player.auto_fire else "AUTO-FIRE OFF", Color(0.5, 1.0, 1.0), 12, 0.9)
+
+	# Bomb input buffer: tastiera/joypad (X/Y) + Middle-Click per mouse-only.
+	if Input.is_action_just_pressed("bomb") or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
+		if not _mmb_held or Input.is_action_just_pressed("bomb"):
+			bomb_buffer_timer = BOMB_INPUT_BUFFER
+		_mmb_held = Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)
+	else:
+		_mmb_held = false
 	# Decade SOLO quando il consumo sarebbe possibile (PLAYING reale, fuori
 	# transition e fuori hit-stop). Altrimenti BOMB_INPUT_BUFFER (180ms) scade
 	# prima che _tick_playing veda il press — un bomb premuto durante l'intro
@@ -806,10 +853,13 @@ func _process(delta: float) -> void:
 		bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, fake_pulse, audio_manager.audio_mid, audio_manager.audio_high)
 		return
 
-	# Retry da gameover (Enter / R)
-	if Input.is_action_just_pressed("ui_accept") and game_state == "GAMEOVER" and game_over_timer > 0.5:
-		_on_retry_pressed()
-		return
+	# Retry da gameover (tastiera): Enter/Space quando name_input non è attivo.
+	# (Joypad A/Start è gestito edge-triggered in UIManager._input così non
+	# scatta se il giocatore teneva premuto A mentre moriva.)
+	if game_state == "GAMEOVER" and game_over_timer > 0.6:
+		if Input.is_action_just_pressed("ui_accept") and not (ui_manager and ui_manager.is_entering_name()):
+			_on_retry_pressed()
+			return
 
 	# Sub-state dispatch ESCLUSIVO. Prima era una catena spuria:
 	#   if GAMEOVER: _tick_gameover_fx(...)
@@ -836,6 +886,7 @@ func _process(delta: float) -> void:
 		# deve completarsi visibilmente). Post-FX aggiorna zoom_blur/grayscale
 		# lerpati in _tick_gameover_fx. Background continua a renderizzare.
 		explosion_system.tick(delta)
+		if floating_text: floating_text.tick(delta)
 		_update_post_fx()
 		bg_renderer.update_background(delta, global_speed_multiplier, current_c_bg, current_c_neb1, current_c_neb2, audio_manager.audio_low, audio_manager.audio_mid, audio_manager.audio_high, player.position.x)
 		return
@@ -882,6 +933,7 @@ func _process(delta: float) -> void:
 	railgun_system.tick(delta)
 	powerup_system.tick(delta)
 	explosion_system.tick(delta)
+	if floating_text: floating_text.tick(delta)
 
 	# Post-FX uniforms
 	_update_post_fx()
@@ -913,8 +965,9 @@ func _process(delta: float) -> void:
 	current_c_neb1 = current_c_neb1.lerp(target_c_neb1, 0.8 * delta)
 	current_c_neb2 = current_c_neb2.lerp(target_c_neb2, 0.8 * delta)
 
-	# Audio reactive shake (solo sui beat forti)
-	if audio_manager.audio_low > 0.75:
+	# Audio reactive shake (solo sui beat forti; soglia 0.62 così funziona
+	# anche sul synth fallback WebGL che ha picco a 0.7).
+	if audio_manager.audio_low > 0.62:
 		add_shake(audio_manager.audio_low * 3.0)
 
 	# Background scroll (con kick→parallasse boost interno a BackgroundRenderer).
@@ -926,7 +979,7 @@ func _process(delta: float) -> void:
 	# Distance + HUD (DIST + KILLS separati così il punteggio kill non viene
 	# sommerso dalla distance dopo 1 minuto di gioco).
 	distance += BASE_SCROLL_SPEED * global_speed_multiplier * delta
-	ui_manager.update_hud(player_hp, int(distance), score_points, flow_state, player_bombs)
+	ui_manager.update_hud(player_hp, int(distance), score_points, flow_state, player_bombs, player.railgun_timer, player.drone_timer, player.dash_cooldown)
 
 # ============================================================
 # SUB-STATE TICKS
@@ -965,6 +1018,8 @@ func _tick_track_transition(delta: float) -> void:
 		audio_manager.is_transitioning = false
 		audio_manager.current_track_idx = (audio_manager.current_track_idx + 1) % audio_manager.playlist.size()
 		audio_manager.load_and_play_track(audio_manager.current_track_idx)
+		if is_instance_valid(ui_manager):
+			ui_manager.show_sector_banner(audio_manager.current_track_idx + 1, int(audio_manager.get_current_bpm()))
 		# Slate wipe: pulizia dello stato gameplay residuo dalla traccia
 		# precedente. Senza questo, un boss non killato in tempo (raro ma
 		# possibile: ultimo HP entra in transition con boss vivo) sopravvive
@@ -1070,6 +1125,7 @@ func _check_boss_spawn() -> void:
 		enemy_system.spawn(BOSS_TYPE_INDEX, Vector2(screen_size.x / 2.0, -200), difficulty())
 		audio_manager.play_sfx(0.5, 10.0)
 		add_shake(50.0)
+		spawn_floating_text(Vector2(screen_size.x * 0.5, screen_size.y * 0.26), "WARNING: MOTHER SHIP", Color(1.0, 0.2, 0.3), 18, 1.8)
 
 func _update_post_fx() -> void:
 	post_fx.set_flow(flow_state)

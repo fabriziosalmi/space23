@@ -7,6 +7,15 @@ class_name PostFXController
 # parlare il dialetto `set_shader_parameter("audio_bass", ...)`.
 
 var rect: ColorRect
+var _uniform_cache: Dictionary = {}
+
+func _set_uniform(param: StringName, val) -> void:
+	if not (rect and rect.material):
+		return
+	if _uniform_cache.has(param) and _uniform_cache[param] == val:
+		return
+	_uniform_cache[param] = val
+	rect.material.set_shader_parameter(param, val)
 
 func setup(screen_size: Vector2) -> void:
 	layer = 100  # Sopra il mondo (z<100), sotto la UI (UIManager.layer=101)
@@ -33,51 +42,38 @@ func setup(screen_size: Vector2) -> void:
 	)
 
 func _apply_aspect(s: Vector2) -> void:
-	if rect and rect.material and s.y > 0.0:
-		rect.material.set_shader_parameter("aspect", s.x / s.y)
+	if s.y > 0.0:
+		_set_uniform(&"aspect", s.x / s.y)
 
-# ===== Setters idiomatici =====
+# ===== Setters idiomatici (dirty-checked per evitare uniform upload ridondanti) =====
 
 func set_flow(v: float) -> void:
-	if rect and rect.material:
-		rect.material.set_shader_parameter("flow_state", v)
+	_set_uniform(&"flow_state", v)
 
 func set_audio_bass(v: float) -> void:
-	if rect and rect.material:
-		rect.material.set_shader_parameter("audio_bass", v)
+	_set_uniform(&"audio_bass", v)
 
 func set_bh(uv: Vector2, intensity: float) -> void:
-	if rect and rect.material:
-		rect.material.set_shader_parameter("bh_pos", uv)
-		rect.material.set_shader_parameter("bh_intensity", intensity)
+	_set_uniform(&"bh_pos", uv)
+	_set_uniform(&"bh_intensity", intensity)
 
 func clear_bh() -> void:
-	if rect and rect.material:
-		rect.material.set_shader_parameter("bh_intensity", 0.0)
+	_set_uniform(&"bh_intensity", 0.0)
 
 func set_zoom_blur(v: float) -> void:
-	if rect and rect.material:
-		rect.material.set_shader_parameter("zoom_blur", v)
+	_set_uniform(&"zoom_blur", v)
 
 func set_grayscale(v: float) -> void:
-	if rect and rect.material:
-		rect.material.set_shader_parameter("grayscale", v)
+	_set_uniform(&"grayscale", v)
 
-# Radial blur masked around the ship. Drive intensity from shake_intensity in
-# Main → punchy "screen distortion" without nauseating physical camera shake.
 func set_radial_blur(v: float) -> void:
-	if rect and rect.material:
-		rect.material.set_shader_parameter("radial_blur", v)
+	_set_uniform(&"radial_blur", v)
 
 func set_ship_uv(uv: Vector2) -> void:
-	if rect and rect.material:
-		rect.material.set_shader_parameter("ship_uv", uv)
+	_set_uniform(&"ship_uv", uv)
 
-# Damage edge glow. Driven da Main.damage_flash_timer (decay 200ms post-hit).
-# 0 = niente, 1 = picco. Tinta rossa applicata solo ai bordi dello schermo.
 func set_damage_flash(v: float) -> void:
-	if rect and rect.material:
-		rect.material.set_shader_parameter("damage_flash", v)
+	_set_uniform(&"damage_flash", v)
 
 func get_zoom_blur() -> float:
 	if rect and rect.material:

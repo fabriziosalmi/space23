@@ -318,9 +318,12 @@ func _init_layers():
 				var ang = a * (PI * 2.0 / 6.0)
 				var rad = a_rad * randf_range(0.6, 1.4)
 				a_pts.append(Vector2(cos(ang), sin(ang)) * rad)
+			var a_loop := PackedVector2Array(a_pts)
+			a_loop.append(a_pts[0])
 			asteroids.append({
 				"offset": Vector2(randf_range(-40, 40), randf_range(-40, 40)),
 				"pts": a_pts,
+				"pts_loop": a_loop,
 				"rot": randf() * PI,
 				"rot_speed": randf_range(-1.5, 1.5)
 			})
@@ -719,16 +722,14 @@ func _draw():
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 				
 		elif e.type == "asteroid_group":
+			var ast_col := Color(0.2, 0.2, 0.2, 0.8)
+			var ast_edge := Color(0.1, 0.1, 0.1, 0.8)
 			for ast in e.asteroids:
 				var draw_pos = e.pos + ast.offset
 				draw_set_transform(draw_pos, ast.rot, Vector2.ONE)
-				var ast_col = Color(0.2, 0.2, 0.2, 0.8)
-				var c_arr = PackedColorArray()
-				c_arr.resize(ast.pts.size())
-				c_arr.fill(ast_col)
-				draw_polygon(ast.pts, c_arr)
-				draw_polyline(ast.pts + PackedVector2Array([ast.pts[0]]), Color(0.1, 0.1, 0.1, 0.8), 1.0, true)
-				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				draw_colored_polygon(ast.pts, ast_col)
+				draw_polyline(ast.pts_loop, ast_edge, 1.0, true)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			
 		elif e.type == "comet":
 			# Edge-fade per nascondere il loop reset (teleport bottom→top): user

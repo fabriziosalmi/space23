@@ -6,9 +6,12 @@ class_name RailgunSystem
 
 const RAILGUN_LIFE: float = 0.2
 const RAILGUN_HALF_WIDTH: float = 15.0
-const RAILGUN_DPS: float = 30.0
+# 120 DPS × 0.2s = 24 dmg/shot × 2 shots/s = 48 DPS piercing (upgrade reale
+# rispetto ai 16.7 DPS dell'arma base; prima 30 DPS = 12 DPS era un nerf).
+const RAILGUN_DPS: float = 120.0
 
 var railguns: Array = []
+var _had_railguns: bool = false
 
 # Refs (settate da Main in _ready)
 var main: Node
@@ -23,6 +26,12 @@ func spawn(pos: Vector2) -> void:
 		main.add_shake(15.0)
 
 func tick(delta: float) -> void:
+	if railguns.is_empty():
+		if _had_railguns:
+			_had_railguns = false
+			queue_redraw()
+		return
+	_had_railguns = true
 	for i in range(railguns.size() - 1, -1, -1):
 		var r: Dictionary = railguns[i]
 		r.life -= delta
@@ -31,11 +40,11 @@ func tick(delta: float) -> void:
 			continue
 		if not enemy_system:
 			continue
-		var rect := Rect2(r.pos.x - RAILGUN_HALF_WIDTH, -1000, RAILGUN_HALF_WIDTH * 2.0, r.pos.y + 1000)
 		var enemies: Array = enemy_system.enemies
 		for j in range(enemies.size() - 1, -1, -1):
 			var e: Dictionary = enemies[j]
-			if rect.has_point(e.pos):
+			var aabb: Vector2 = e.hit_aabb
+			if abs(e.pos.x - r.pos.x) < aabb.x + RAILGUN_HALF_WIDTH and e.pos.y - aabb.y < r.pos.y and e.pos.y + aabb.y > -1000.0:
 				e.hp -= RAILGUN_DPS * delta
 				e.hit_flash = 0.1
 				if e.hp <= 0:

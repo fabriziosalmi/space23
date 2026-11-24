@@ -5,6 +5,7 @@ signal start_pressed
 signal name_submitted(new_text: String)
 signal retry_pressed
 signal bomb_pressed
+signal dash_pressed
 signal pause_toggle_requested
 
 # HUD: split DIST + KILLS invece di SCORE unico (la distance dominava il totale).
@@ -16,13 +17,21 @@ var version_label: Label  # piccolo, basso-destra, visibile solo durante TITLE
 var leaderboard_label: Label
 var flow_label: Label
 var bomb_label: Label
+var buffs_label: Label
 
 # Pause overlay
 var pause_dim: ColorRect
 var pause_label: Label
 
-# Mobile BOMB button
+# Mobile BOMB / DASH buttons + Mute badge
 var bomb_button: Button
+var dash_button: Button
+var mute_label: Label
+var sector_label: Label
+var _sector_toast_t: float = 0.0
+var _hp_target: float = 100.0
+var _hp_fill_style: StyleBoxFlat
+var _buff_expiring: bool = false
 
 # Control hints visibili sul TITLE (sotto leaderboard). Onboarding minimo:
 # il giocatore vede le keybind senza dover indovinare WASD / Space / Shift / X.
@@ -49,6 +58,10 @@ var arcade_font
 # bloom HDR sui label colorati (yellow KILLS, orange BOMBS) per ~1 frame.
 var _prev_kill_score: int = -1
 var _prev_bombs: int = -1
+var _prev_dist_m: int = -1
+var _prev_buffs_text: String = ""
+var _prev_flow_mode: int = -1
+var _prev_flow_pct: int = -1
 const HUD_PULSE_DURATION: float = 0.10
 var _kill_pulse_t: float = 0.0
 var _bomb_pulse_t: float = 0.0
@@ -133,7 +146,7 @@ func _ready():
 	controls_label.size = Vector2(screen_size.x - 40, 40)
 	controls_label.position = Vector2(20, screen_size.y - 70)
 	controls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	controls_label.text = "WASD / STICK  MOVE   •   SPACE / A  FIRE   •   SHIFT / B  DASH   •   X / Y  BOMB   •   ESC / START  PAUSE"
+	controls_label.text = "WASD/STICK MOVE  •  SPACE/Z/RT FIRE  •  SHIFT/C/RMB/LT DASH  •  X/MMB BOMB  •  F AUTO  •  M MUTE"
 	controls_label.add_theme_font_override("font", arcade_font)
 	controls_label.add_theme_font_size_override("font_size", 11)
 	controls_label.add_theme_color_override("font_color", Color(0.8, 0.95, 1.0, 0.7))
@@ -165,6 +178,16 @@ func _ready():
 	bomb_label.hide()
 	add_child(bomb_label)
 
+	buffs_label = Label.new()
+	buffs_label.position = Vector2(20, 128)
+	buffs_label.add_theme_font_override("font", arcade_font)
+	buffs_label.add_theme_font_size_override("font_size", 12)
+	buffs_label.add_theme_color_override("font_color", Color(0.7, 0.95, 1.0))
+	buffs_label.add_theme_color_override("font_outline_color", Color(0.0, 0.15, 0.3))
+	buffs_label.add_theme_constant_override("outline_size", 4)
+	buffs_label.hide()
+	add_child(buffs_label)
+
 	# Boss HP UI (centrato in alto)
 	boss_hp_label = Label.new()
 	boss_hp_label.text = "WARNING — MOTHER SHIP"
@@ -189,7 +212,7 @@ func _ready():
 	boss_hp_bar.hide()
 	add_child(boss_hp_bar)
 
-	# --- MOBILE BOMB BUTTON (visibile solo su touch / web) ---
+	# --- MOBILE BOMB + DASH BUTTONS (visibili solo su touch / web) ---
 	bomb_button = Button.new()
 	bomb_button.text = "BOMB"
 	bomb_button.size = Vector2(96, 96)
@@ -199,8 +222,44 @@ func _ready():
 	bomb_button.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
 	bomb_button.modulate = Color(1.0, 1.0, 1.0, 0.85)
 	bomb_button.pressed.connect(func(): bomb_pressed.emit())
-	bomb_button.hide()  # mostrato all'inizio partita su mobile/web (vedi _show_play_ui)
+	bomb_button.hide()
 	add_child(bomb_button)
+
+	dash_button = Button.new()
+	dash_button.text = "DASH"
+	dash_button.size = Vector2(96, 96)
+	dash_button.position = Vector2(screen_size.x - 224, screen_size.y - 116)
+	dash_button.add_theme_font_override("font", arcade_font)
+	dash_button.add_theme_font_size_override("font_size", 18)
+	dash_button.add_theme_color_override("font_color", Color(0.3, 1.0, 1.0))
+	dash_button.modulate = Color(1.0, 1.0, 1.0, 0.85)
+	dash_button.pressed.connect(func(): dash_pressed.emit())
+	dash_button.hide()
+	add_child(dash_button)
+
+	mute_label = Label.new()
+	mute_label.text = "MUTED [M]"
+	mute_label.position = Vector2(screen_size.x - 150, 48)
+	mute_label.add_theme_font_override("font", arcade_font)
+	mute_label.add_theme_font_size_override("font_size", 12)
+	mute_label.add_theme_color_override("font_color", Color(1.0, 0.35, 0.35))
+	mute_label.add_theme_color_override("font_outline_color", Color(0.2, 0.0, 0.0))
+	mute_label.add_theme_constant_override("outline_size", 4)
+	mute_label.hide()
+	add_child(mute_label)
+
+	sector_label = Label.new()
+	sector_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sector_label.size = Vector2(600, 28)
+	sector_label.position = Vector2(screen_size.x / 2.0 - 300, 76)
+	sector_label.add_theme_font_override("font", arcade_font)
+	sector_label.add_theme_font_size_override("font_size", 13)
+	sector_label.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0))
+	sector_label.add_theme_color_override("font_outline_color", Color(0.05, 0.1, 0.25))
+	sector_label.add_theme_constant_override("outline_size", 5)
+	sector_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sector_label.hide()
+	add_child(sector_label)
 
 	# Game Over UI.
 	# Bias verticale: "GAME OVER" (48pt rosso) è il primo figlio e l'ancora
@@ -211,8 +270,8 @@ func _ready():
 	# l'aspetta.
 	game_over_container = VBoxContainer.new()
 	game_over_container.alignment = BoxContainer.ALIGNMENT_CENTER
-	game_over_container.size = Vector2(600, 400)
-	game_over_container.position = Vector2(screen_size.x / 2.0 - 300, screen_size.y / 2.0 - 230)
+	game_over_container.size = Vector2(600, 260)
+	game_over_container.position = Vector2(screen_size.x / 2.0 - 300, screen_size.y / 2.0 - 270)
 	game_over_container.hide()
 	
 	var go_label = Label.new()
@@ -268,12 +327,12 @@ func _ready():
 	add_child(pause_dim)
 
 	pause_label = Label.new()
-	pause_label.text = "P A U S E\n\nTAP  /  ESC  /  START"
+	pause_label.text = "P A U S E\n\nTAP / ESC / START   RESUME\nR   RESTART   •   M   MUTE"
 	pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pause_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	pause_label.size = screen_size
 	pause_label.add_theme_font_override("font", arcade_font)
-	pause_label.add_theme_font_size_override("font_size", 48)
+	pause_label.add_theme_font_size_override("font_size", 28)
 	pause_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
 	pause_label.add_theme_color_override("font_outline_color", Color(0.0, 0.2, 0.4))
 	pause_label.add_theme_constant_override("outline_size", 12)
@@ -316,6 +375,14 @@ func _layout_for_size(s: Vector2) -> void:
 		controls_label.position = Vector2(20, s.y - 70)
 	if bomb_button:
 		bomb_button.position = Vector2(s.x - 116, s.y - 116)
+	if dash_button:
+		dash_button.position = Vector2(s.x - 224, s.y - 116)
+	if mute_label:
+		mute_label.position = Vector2(s.x - 150, 48)
+	if flow_label:
+		flow_label.position = Vector2(s.x - 260.0, 20.0)
+	if sector_label:
+		sector_label.position = Vector2(s.x / 2.0 - 300, 76)
 	if boss_hp_label:
 		boss_hp_label.position = Vector2(s.x / 2.0 - 300, 18)
 	if boss_hp_bar:
@@ -325,7 +392,7 @@ func _layout_for_size(s: Vector2) -> void:
 	if pause_label:
 		pause_label.size = s
 	if game_over_container:
-		game_over_container.position = Vector2(s.x / 2.0 - 300, s.y / 2.0 - 230)
+		game_over_container.position = Vector2(s.x / 2.0 - 300, s.y / 2.0 - 270)
 
 # Helper per creare label HUD con stile coerente (font arcade + outline scuro).
 func _make_hud_label(pos: Vector2, font_color: Color, outline_color: Color) -> Label:
@@ -357,6 +424,8 @@ func _apply_neon_progressbar_theme(pb: ProgressBar, bar_color: Color, edge_color
 	fill.set_border_width_all(1)
 	fill.set_corner_radius_all(2)
 	pb.add_theme_stylebox_override("fill", fill)
+	if pb == hp_bar:
+		_hp_fill_style = fill
 
 # Mostra/nasconde il cluster di HUD in-game (chiamato da _input title-hide e hide_game_over).
 func _show_play_ui() -> void:
@@ -365,8 +434,10 @@ func _show_play_ui() -> void:
 	hp_bar.show()
 	flow_label.show()
 	bomb_label.show()
+	if buffs_label: buffs_label.show()
 	if OS.has_feature("mobile") or OS.has_feature("web"):
 		bomb_button.show()
+		dash_button.show()
 
 func _hide_play_ui() -> void:
 	dist_label.hide()
@@ -374,13 +445,40 @@ func _hide_play_ui() -> void:
 	hp_bar.hide()
 	flow_label.hide()
 	bomb_label.hide()
-	# Gate sullo stesso check di _show_play_ui (mobile/web): asimmetrico prima,
-	# il show-side era gated mentre l'hide-side hidava sempre — funzionalmente
-	# equivalente (su desktop bomb_button è già hidden dall'init), ma il pair
-	# letto in coppia dava l'idea che il bomb_button potesse comparire su
-	# desktop in un certo path. Ora i due metodi sono speculari.
+	if buffs_label:
+		buffs_label.text = ""
+		_prev_buffs_text = ""
+		buffs_label.hide()
+	if sector_label:
+		_sector_toast_t = 0.0
+		sector_label.hide()
 	if OS.has_feature("mobile") or OS.has_feature("web"):
 		bomb_button.hide()
+		dash_button.hide()
+
+func set_mute_visible(muted: bool) -> void:
+	if mute_label:
+		mute_label.visible = muted
+
+func show_sector_banner(sector_num: int, bpm: int) -> void:
+	if not sector_label:
+		return
+	sector_label.text = "SECTOR %02d  ·  %d BPM" % [sector_num, bpm]
+	sector_label.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	sector_label.show()
+	_sector_toast_t = 2.6
+
+func is_entering_name() -> bool:
+	return name_input != null and name_input.visible
+
+func is_touching_action_ui() -> bool:
+	var vp := get_viewport()
+	var mpos: Vector2 = vp.get_mouse_position() if vp != null else Vector2(-9999, -9999)
+	for btn in [bomb_button, dash_button]:
+		if btn != null and btn.visible:
+			if btn.is_pressed() or btn.get_global_rect().has_point(mpos):
+				return true
+	return false
 
 func set_pause_visible(visible_state: bool) -> void:
 	pause_dim.visible = visible_state
@@ -421,8 +519,41 @@ func _process(delta):
 	elif bomb_label.modulate != Color.WHITE:
 		bomb_label.modulate = Color.WHITE
 
+	# HP bar smooth lerp + dynamic color (verde → ambra → rosso pulsante <25%)
+	if hp_bar and hp_bar.visible:
+		hp_bar.value = lerp(hp_bar.value, _hp_target, min(1.0, 14.0 * delta))
+		if _hp_fill_style:
+			var r: float = clamp(_hp_target / 100.0, 0.0, 1.0)
+			if r < 0.25:
+				var pulse: float = 0.65 + 0.35 * abs(sin(Time.get_ticks_msec() / 1000.0 * 10.0))
+				_hp_fill_style.bg_color = Color(1.1 * pulse, 0.15, 0.2)
+			elif r < 0.5:
+				_hp_fill_style.bg_color = Color(1.0, 0.72, 0.15)
+			else:
+				_hp_fill_style.bg_color = Color(0.2, 1.0, 0.5)
+
+	# Blink buffs_label quando Railgun o Droni stanno per scadere (<2.5s)
+	if buffs_label and buffs_label.visible:
+		if _buff_expiring:
+			var blink: float = 0.45 + 0.55 * abs(sin(Time.get_ticks_msec() / 1000.0 * 12.0))
+			buffs_label.modulate = Color(1.2, 0.65, 0.25, blink)
+		elif buffs_label.modulate != Color.WHITE:
+			buffs_label.modulate = Color.WHITE
+
+	# Sector toast fade-out
+	if _sector_toast_t > 0.0 and sector_label:
+		_sector_toast_t = max(_sector_toast_t - delta, 0.0)
+		var a: float = clamp(_sector_toast_t / 0.8, 0.0, 1.0)
+		sector_label.modulate = Color(1.0, 1.0, 1.0, a)
+		if _sector_toast_t <= 0.0:
+			sector_label.hide()
+
+const _TITLE_IGNORED_KEYS := [KEY_M, KEY_ALT, KEY_CTRL, KEY_META, KEY_SHIFT, KEY_CAPSLOCK, KEY_TAB]
+
 func _input(event):
 	if title_label.visible and (event is InputEventKey or event is InputEventMouseButton or event is InputEventScreenTouch or event is InputEventJoypadButton):
+		if event is InputEventKey and event.physical_keycode in _TITLE_IGNORED_KEYS:
+			return
 		if not event.is_pressed() and not event.is_echo():
 			title_label.hide()
 			leaderboard_label.hide()
@@ -430,6 +561,14 @@ func _input(event):
 			if controls_label: controls_label.hide()
 			_show_play_ui()
 			start_pressed.emit()
+		return
+
+	# Joypad edge-triggered retry su Game Over (tutti i controller connessi):
+	# funziona anche con name_input visibile così chi gioca solo con gamepad
+	# non resta mai bloccato sul campo testo.
+	if game_over_container.visible and event is InputEventJoypadButton:
+		if event.pressed and not event.is_echo() and (event.button_index == JOY_BUTTON_A or event.button_index == JOY_BUTTON_START):
+			retry_pressed.emit()
 
 func _on_name_submitted(new_text: String):
 	new_text = _sanitize_name(new_text)
@@ -464,7 +603,13 @@ func show_game_over(distance_m: int, kill_score: int):
 	# Label aggiornata: il valore "kill_score" è in realtà score_points
 	# (kills + grazes + top-half time bonus), non solo kills. "SCORE" è
 	# accurato; il breakdown DIST + SCORE chiarisce la composizione del totale.
-	final_score_label.text = "FINAL SCORE: %d\n\nDIST  %d m   +   SCORE  %d" % [total, distance_m, kill_score]
+	var badge: String = ""
+	if total > 0:
+		if highscores.is_empty() or total > int(highscores[0]["score"]):
+			badge = "*** NEW RECORD! ***\n"
+		elif highscores.size() < 5 or total > int(highscores[highscores.size() - 1]["score"]):
+			badge = "TOP 5 PILOT!\n"
+	final_score_label.text = "%sFINAL SCORE: %d\n\nDIST  %d m   +   SCORE  %d" % [badge, total, distance_m, kill_score]
 	game_over_container.show()
 	# Leaderboard visible durante game over: prima era hidden per sempre dopo
 	# il primo TITLE → il giocatore non vedeva mai il proprio nuovo entry
@@ -472,8 +617,12 @@ func show_game_over(distance_m: int, kill_score: int):
 	leaderboard_label.show()
 	name_input.show()
 	name_input.text = ""
-	name_input.grab_focus()
-	retry_button.hide()
+	if not OS.has_feature("mobile"):
+		name_input.grab_focus()
+	# RETRY sempre visibile anche prima di confermare il nome: risolve il
+	# soft-lock su mobile (dove la virtual keyboard è disabilitata) e su
+	# joypad; premere RETRY salva comunque lo score via auto_save_pending_score.
+	retry_button.show()
 
 # Chiamata da Main._on_retry_pressed PRIMA di hide_game_over: se c'è uno score
 # pendente (game over con name_input ancora visibile = utente non ha submitato
@@ -485,7 +634,7 @@ func auto_save_pending_score() -> void:
 		return
 	if current_final_score <= 0:
 		return
-	var pending_name: String = name_input.text.strip_edges().to_upper()
+	var pending_name: String = _sanitize_name(name_input.text)
 	if pending_name == "":
 		pending_name = "ANON"
 	save_highscore(pending_name, current_final_score)
@@ -511,33 +660,68 @@ func hide_game_over():
 	leaderboard_label.hide()
 	_show_play_ui()
 
-func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, bombs: int = 0):
-	hp_bar.value = hp
-	dist_label.text = "DIST  %dm" % distance_m
-	# "SCORE" anziché "KILLS": il valore include kills (250/5000), graze (50)
-	# e top-half time bonus (~14 pt/sec). "KILLS" era misleading — sembrava
-	# un counter di nemici uccisi mentre era un punteggio composito.
-	kill_label.text = "SCORE  %d" % kill_score
-	bomb_label.text = "BOMBS: " + str(bombs)
+func update_hud(hp: float, distance_m: int, kill_score: int, flow: float = 0.0, bombs: int = 0, railgun_t: float = 0.0, drone_t: float = 0.0, dash_cd: float = 0.0):
+	_hp_target = hp
 
-	# Pulse on increment. Skip the very first frame (when prev = -1) so the
-	# initial HUD show non triggera un pulse.
-	if _prev_kill_score >= 0 and kill_score > _prev_kill_score:
-		_kill_pulse_t = HUD_PULSE_DURATION
-	_prev_kill_score = kill_score
-	if _prev_bombs >= 0 and bombs != _prev_bombs:
-		_bomb_pulse_t = HUD_PULSE_DURATION
-	_prev_bombs = bombs
+	# Dirty-checked HUD strings: aggiorna .text solo quando il valore cambia.
+	if distance_m != _prev_dist_m:
+		_prev_dist_m = distance_m
+		dist_label.text = "DIST  %dm" % distance_m
 
+	if kill_score != _prev_kill_score:
+		if _prev_kill_score >= 0 and kill_score > _prev_kill_score:
+			_kill_pulse_t = HUD_PULSE_DURATION
+		_prev_kill_score = kill_score
+		kill_label.text = "SCORE  %d" % kill_score
+
+	if bombs != _prev_bombs:
+		if _prev_bombs >= 0:
+			_bomb_pulse_t = HUD_PULSE_DURATION
+		_prev_bombs = bombs
+		bomb_label.text = "BOMBS: " + str(bombs)
+
+	if bomb_button and bomb_button.visible:
+		bomb_button.modulate.a = 0.85 if bombs > 0 else 0.25
+	if dash_button and dash_button.visible:
+		dash_button.modulate.a = 0.85 if dash_cd <= 0.0 else 0.35
+
+	_buff_expiring = (railgun_t > 0.0 and railgun_t < 2.5) or (drone_t > 0.0 and drone_t < 2.5)
+	if buffs_label:
+		var new_buffs: String = ""
+		if railgun_t > 0.0 or drone_t > 0.0 or dash_cd > 0.0:
+			var lines: PackedStringArray = []
+			if railgun_t > 0.0:
+				lines.append("RAIL  %.1fs" % railgun_t)
+			if drone_t > 0.0:
+				lines.append("DRONE %.1fs" % drone_t)
+			if dash_cd > 0.0:
+				lines.append("DASH  %.1fs" % dash_cd)
+			new_buffs = "\n".join(lines)
+		if new_buffs != _prev_buffs_text:
+			_prev_buffs_text = new_buffs
+			buffs_label.text = new_buffs
+
+	var vp_w: float = get_viewport().get_visible_rect().size.x
+	var mult: float = 1.0 + flow * 3.0
 	if flow >= 1.0:
-		flow_label.text = "MAX FLOW!"
-		flow_label.add_theme_color_override("font_color", Color(1.0, 0.2, 1.0))
-		flow_label.position = Vector2(get_viewport().get_visible_rect().size.x - 220, 20) + Vector2(randf_range(-3,3), randf_range(-3,3))
+		if _prev_flow_mode != 2:
+			_prev_flow_mode = 2
+			_prev_flow_pct = 100
+			flow_label.text = "MAX FLOW! 4.0x"
+			flow_label.add_theme_color_override("font_color", Color(1.0, 0.2, 1.0))
+		flow_label.position = Vector2(vp_w - 280.0, 20.0) + Vector2(randf_range(-3, 3), randf_range(-3, 3))
 	elif flow > 0.05:
-		flow_label.text = "FLOW: " + str(int(flow * 100)) + "%"
-		flow_label.add_theme_color_override("font_color", Color(0.2, 1.0, 1.0))
-		flow_label.position = Vector2(get_viewport().get_visible_rect().size.x - 220, 20)
-	else:
+		var pct: int = int(flow * 100.0)
+		if _prev_flow_mode != 1:
+			_prev_flow_mode = 1
+			flow_label.add_theme_color_override("font_color", Color(0.2, 1.0, 1.0))
+			flow_label.position = Vector2(vp_w - 260.0, 20.0)
+		if pct != _prev_flow_pct:
+			_prev_flow_pct = pct
+			flow_label.text = "FLOW %d%%  %.1fx" % [pct, mult]
+	elif _prev_flow_mode != 0:
+		_prev_flow_mode = 0
+		_prev_flow_pct = 0
 		flow_label.text = ""
 
 func load_highscores():

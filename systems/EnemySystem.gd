@@ -119,13 +119,13 @@ const ENEMY_TYPES := [
 func spawn(type_idx: int, pos: Vector2, diff: float, speed_mult: float = 1.0, color_mod: Color = Color(1, 1, 1, 1)) -> void:
 	var e_type: Dictionary = ENEMY_TYPES[type_idx]
 	var hp_value: int = int(e_type.hp * diff)
+	var pts_arr := PackedVector2Array(e_type.pts)
+	var pts_loop := PackedVector2Array(e_type.pts)
+	pts_loop.append(pts_arr[0])
 	enemies.append({
 		"pos": pos,
 		"hp": hp_value,
 		"max_hp": hp_value,
-		# base_hp = HP del tipo prima del moltiplicatore di difficulty. Usato dal
-		# hit-stop scaler in ProjectileSystem per restare diff-invariante (un
-		# fighter è sempre "fighter-class" anche a diff 4).
 		"base_hp": int(e_type.hp),
 		"speed": randf_range(e_type.speed[0], e_type.speed[1]) * diff * speed_mult,
 		"ai_type": e_type.ai,
@@ -134,10 +134,10 @@ func spawn(type_idx: int, pos: Vector2, diff: float, speed_mult: float = 1.0, co
 		"charge_timer": 0.0,
 		"shoot_timer": randf_range(e_type.shoot[0], e_type.shoot[1]),
 		"color": e_type.color * color_mod,
-		"pts": PackedVector2Array(e_type.pts),
+		"pts": pts_arr,
+		"pts_loop": pts_loop,
 		"hit_flash": 0.0,
 		"invader_dir": 1.0 if randf() > 0.5 else -1.0,
-		# AABB half-extents per collision (point-in-box) — vedi _aabb_cache.
 		"hit_aabb": _aabb_half_for_type(type_idx)
 	})
 
@@ -168,7 +168,9 @@ func clear() -> void:
 func tick(delta: float) -> void:
 	if not is_instance_valid(player):
 		return
-	var gsm: float = main.global_speed_multiplier if main else 1.0
+	# Cap velocità combattimento nei Drop a 2.2x: lo sfondo/warp resta a 4.8x
+	# per l'adrenalina, ma gli enemy restano leggibili e schivabili.
+	var gsm: float = min(main.global_speed_multiplier if main else 1.0, 2.2)
 
 	for i in range(enemies.size() - 1, -1, -1):
 		var e: Dictionary = enemies[i]
@@ -206,7 +208,16 @@ func tick(delta: float) -> void:
 			explosion_system.spawn(player.position, Color(3.0, 0.5, 0.5), 0.8)
 			main.add_shake(25.0)
 			main.trigger_hit_stop(0.05)
-			enemies.remove_at(i)
+			if e.ai_type == Main.BOSS_TYPE_INDEX:
+				# Il boss non viene mai kamikaze-cancellato: subisce danno fisso
+				# e resta in vita (con kill regolare se hp <= 0).
+				e.hp -= 30
+				e.hit_flash = 0.25
+				if e.hp <= 0:
+					main.handle_enemy_kill(e)
+					enemies.remove_at(i)
+			else:
+				enemies.remove_at(i)
 			main.damage_player(Main.ENEMY_BODY_COLLISION_DAMAGE)
 		elif e.pos.y > screen_size.y + 100 or e.hp <= 0 or e.pos.y < -300:
 			# Cleanup unificato:
@@ -305,27 +316,42 @@ func _ai_mothership(e: Dictionary, delta: float, gsm: float) -> void:
 		if e.pos.y > 150:
 			e.ai_state = "ATTACK"
 	elif e.ai_state == "ATTACK":
-		e.pos.x += sin(e.ai_timer * 1.5) * 80.0 * delta
+		var phase2: bool = e.hp <= e.max_hp * 0.5
+		if phase2 and not e.get("phase2_triggered", false):
+			e.phase2_triggered = true
+			e.color = Color(2.6, 0.35, 0.8)  # shift cremisi-magenta in Fase 2
+			audio_manager.play_sfx(0.3, 8.0, e.pos)
+			if main:
+				main.add_shake(40.0)
+				main.spawn_floating_text(e.pos + Vector2(0, -40), "PHASE 2!", Color(1.0, 0.25, 0.35), 18, 1.2)
+
+		var sway_freq: float = 2.4 if phase2 else 1.5
+		var sway_amp: float = 140.0 if phase2 else 80.0
+		e.pos.x = clamp(e.pos.x + sin(e.ai_timer * sway_freq) * sway_amp * delta, 160.0, screen_size.x - 160.0)
 		e.shoot_timer -= delta
-		# Telegraph 350ms (era 100ms — leggibile solo con conoscenza pregressa
-		# del pattern). Window 0.45 → 0.10 = 350ms di flash bianco prima del
-		# 16-bullet ring fan. All'ingresso del window, parte una "carica" SFX
-		# pitch alto (2.5) che annuncia l'imminente fan — il giocatore ha tempo
-		# di posizionarsi, e il mancato dodge è skill-based, non caos.
+		# Telegraph 350ms (window 0.45 → 0.10) prima del ring fan.
 		if e.shoot_timer <= 0.45 and e.shoot_timer > 0.10:
 			e.hit_flash = 1.0
 			if not e.get("telegraph_charging", false):
 				e.telegraph_charging = true
 				audio_manager.play_sfx(2.5, 0.0, e.pos)
 		if e.shoot_timer <= 0:
-			e.shoot_timer = 2.0
+			e.shoot_timer = 1.45 if phase2 else 2.0
 			e.telegraph_charging = false
 			audio_manager.play_sfx(0.8, 2.0, e.pos)
-			var a: float = e.ai_timer * 3.0
-			for j in range(16):
-				var dir: Vector2 = Vector2(cos(a + j * PI / 8.0), sin(a + j * PI / 8.0))
-				projectile_system.spawn_enemy_bullet(e.pos + Vector2(0, 40), dir, 200.0, false)
-			if randf() > 0.5:
+			var a: float = e.ai_timer * (4.2 if phase2 else 3.0)
+			var ring_count: int = 20 if phase2 else 16
+			var ring_speed: float = 240.0 if phase2 else 200.0
+			for j in range(ring_count):
+				var dir: Vector2 = Vector2(cos(a + j * TAU / float(ring_count)), sin(a + j * TAU / float(ring_count)))
+				projectile_system.spawn_enemy_bullet(e.pos + Vector2(0, 40), dir, ring_speed, false)
+			if phase2:
+				# Fase 2: doppi missili homing dalle ali
+				var dir_l: Vector2 = (player.position - (e.pos + Vector2(-90, 0))).normalized()
+				var dir_r: Vector2 = (player.position - (e.pos + Vector2(90, 0))).normalized()
+				projectile_system.spawn_enemy_bullet(e.pos + Vector2(-90, 0), dir_l, 380.0, true)
+				projectile_system.spawn_enemy_bullet(e.pos + Vector2(90, 0), dir_r, 380.0, true)
+			elif randf() > 0.5:
 				var dir_p: Vector2 = (player.position - e.pos).normalized()
 				projectile_system.spawn_enemy_bullet(e.pos, dir_p, 400.0, true)
 
@@ -336,29 +362,32 @@ func _draw() -> void:
 
 	# Nemici (poligono + core glow audio-reattivo + edge glow al hit)
 	for e in enemies:
-		# Fill: tinta originale, brighter (non bianco) durante hit_flash.
+		# Fill: draw_colored_polygon evita allocazioni PackedColorArray per-frame.
 		var fill: Color = e.color
 		if e.hit_flash > 0:
 			fill = e.color * (1.0 + 4.0 * e.hit_flash)
 
-		var c_arr := PackedColorArray()
-		c_arr.resize(e.pts.size())
-		c_arr.fill(fill)
 		var beat_scale: float = 1.0 + (audio_low * 0.3)
 		draw_set_transform(e.pos, 0.0, Vector2(beat_scale, beat_scale))
-		draw_polygon(e.pts, c_arr)
+		draw_colored_polygon(e.pts, fill)
 
-		# Edge glow ring: attivo solo quando colpito; preserva la silhouette
-		# invece di sostituirla con un bianco invadente.
+		# Edge glow ring: usa pts_loop precalcolato allo spawn (zero allocazioni).
 		if e.hit_flash > 0:
 			var glow: Color = e.color * 4.0
 			glow.a = e.hit_flash
-			var loop := PackedVector2Array(e.pts)
-			loop.append(e.pts[0])
-			draw_polyline(loop, glow, 2.0 + 4.0 * e.hit_flash, true)
+			draw_polyline(e.pts_loop, glow, 2.0 + 4.0 * e.hit_flash, true)
 
 		draw_circle(Vector2.ZERO, 6.0, Color(2.5 + audio_low * 2.0, 0.5, 0.5))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+		# Micro-barra HP sui nemici pesanti (non-boss) una volta danneggiati.
+		if e.ai_type != Main.BOSS_TYPE_INDEX and int(e.get("base_hp", 0)) >= 10 and e.hp < e.max_hp and e.max_hp > 0:
+			var bw: float = min(44.0, e.hit_aabb.x * 1.4)
+			var bx: float = e.pos.x - bw * 0.5
+			var by: float = e.pos.y - e.hit_aabb.y - 10.0
+			var ratio: float = clamp(float(e.hp) / float(e.max_hp), 0.0, 1.0)
+			draw_rect(Rect2(bx, by, bw, 3.0), Color(0.05, 0.05, 0.08, 0.75))
+			draw_rect(Rect2(bx, by, bw * ratio, 3.0), Color(1.0 - ratio * 0.4, 0.25 + ratio * 0.75, 0.25, 0.9))
 
 	# Radar HUD: indicatori per nemici sopra il bordo superiore della camera
 	if main and main.game_state != "TITLE" and is_instance_valid(main.main_camera):
